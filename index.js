@@ -91,6 +91,7 @@ var graph = module.exports = function (table, opts) {
     var textHeight = parseInt(CTX.font)
     var textSize = align.x ? textHeight : textWidth
     //how many marks can fit on the graph?
+
     var room   = v(max).subtract(min).length()
     var vec    = v(max).subtract(min).normalize()
     var offset = v(align).multiply(textHeight + 5)
@@ -133,7 +134,8 @@ var graph = module.exports = function (table, opts) {
         )
         .text(
           round(toLog(stat.min + value)),
-          textV.set(markV).add(offset)
+          textV.set(markV).add(offset),
+          {rotate: !!align.x} //90 degrees
         )
         .move(markV)
         .line(markV.add(dash))
