@@ -39,28 +39,31 @@ var graph = module.exports = function (table, opts) {
 
   //uh, actually, I don't need this yet,
   //because I only have 3 columns.
-  var stats
-  var headers = table.shift().map(parseUnits)
+//  var headers = table.shift().map(parseUnits)
 
   table.sort(function (a, b) {
     return a[0] - b[0]
   })
 
   //this will be synchronous, because table is an array.
-  pull(
-    pull.values(table),
-    pull.map(function (e) {
+
+  var stats = getStats(table.map(function (e) {
       if(isNaN(e[0])) return e
       e[0] = Math.log(e[0])
       return e
-    }),
-    getStats(function (err, _stats) {
-      if(err) throw err
-      stats = _stats
-  }))
-  
+    }))
+//  pull(
+//    pull.values(table),
+//    pull.map(),
+//    getStats(function (err, _stats) {
+//      if(err) throw err
+//      stats = _stats
+//  }))
+//  
+  //calculate margin from font height
 
-  var margin = 60
+  var textHeight = parseInt(CTX.font)
+  var margin = textHeight * 3
 
   stats.forEach(function (stat, i) {
     if(!stat || !i) return
@@ -72,29 +75,32 @@ var graph = module.exports = function (table, opts) {
   var xScale = (canvas.width - margin*2) / (stat.max - stat.min)
   var xMin = stat.min
 
-  var colours = ['red', 'blue', 'green', 'yellow']
+  var colours = ['black', 'red', 'blue', 'green', 'yellow']
 
   function round (n) {
     return parseFloat(n.toPrecision(3))
   }
 
+  var draw =
+    vecCanvas(ctx)
+
+  var j = 0
+
   //draw scale on the sides of the graph
   function drawScale (stat, min, max, align, log) {
-    var draw =
-      vecCanvas(ctx).strokeStyle('black').start().move(min).line(max)
-
+    draw.strokeStyle('black').fillStyle('black').start().move(min).line(max)
+    
     function toLog (value) {
       return log ? Math.pow(Math.E, value) : value
     }
 
     var textWidth = ctx.measureText(round(toLog(stat.max))).width
-    var textHeight = parseInt(CTX.font)
     var textSize = align.x ? textHeight : textWidth
     //how many marks can fit on the graph?
 
     var room   = v(max).subtract(min).length()
     var vec    = v(max).subtract(min).normalize()
-    var offset = v(align).multiply(textHeight + 5)
+    var offset = v(align).multiply((align.x > 0 ? textHeight : textHeight*1.5))
     var dash   = v(align).multiply(5)
 
     var ranges = [1, 2, 5, 10, 20, 50, 100, 200, 500,
@@ -113,25 +119,14 @@ var graph = module.exports = function (table, opts) {
     }
 
     var marks = Math.floor(stat.range/_step)
-    //console.log(marks, spacing)
+
     var markV = v(), textV = v()
     for(var i = 0; i <= marks; i++) {
       var value = step(i)
-      if(log) {
-        console.error('step', Math.log(value), stat.min + value, _step)
-        console.log('log?', value*xScale, i, value, toLog(stat.min + value))
-//        if(log && Math.log(value) < 0) return
-        markV.set(vec).multiply(value*xScale).add(min)
-      }
-      else
-        markV.set(vec).multiply(value*xScale).add(min)
+      markV.set(vec).multiply(value*xScale).add(min)
 
       draw
-        .textAlign(
-            align.x < 0 ? 'right'
-          : align.x > 0 ? 'left'
-          :               'center'
-        )
+        .textAlign('center')
         .text(
           round(toLog(stat.min + value)),
           textV.set(markV).add(offset),
@@ -140,9 +135,16 @@ var graph = module.exports = function (table, opts) {
         .move(markV)
         .line(markV.add(dash))
     }
+
+    if(stat.title)
+      draw.fillStyle(colours[j++]).text(
+        stat.title,
+        min.add(max).divide(2).add(align.multiply((align.x > 0 ? textHeight*2 : textHeight*2.5))),
+        {rotate: !!align.x}
+      )
     draw.stroke()
   }
-
+ 
   drawScale(
     stats[0],
     v(margin, canvas.height - margin),
@@ -165,13 +167,15 @@ var graph = module.exports = function (table, opts) {
     v(1, 0)
   )
 
-  headers.forEach(function (header, col) {
+  draw.fillStyle('black').text('Time to Construct Merkle Tree', {x: canvas.width/2, y: textHeight * 2})
+
+  stats.forEach(function (header, col) {
     if(!col) return
     var stat = stats[col]
     if(!stat) return
     var yScale = (canvas.height - margin*2)/(stat.max - stat.min)
     var _x = 0, _y = 0
-    ctx.strokeStyle = colours.shift()
+    ctx.strokeStyle = colours[col]
     //'#'+ (Math.random().toString().substring(2, 8))
     ctx.beginPath()
     table.forEach(function (row, n) {
@@ -190,17 +194,15 @@ var graph = module.exports = function (table, opts) {
 if(process.title === 'browser') {
   document.body.appendChild(
     graph(require('./test.json'), {width: 1000, height:600}))
+} else if(!module.parent) {
+  var parseCSV = require('./parse-csv')
+  pull(
+    require('stream-to-pull-stream').read(process.stdin),
+    parseCSV(),
+    pull.collect(function (err, table) {
+      graph(table)//.pngStream().pipe(process.stdout)
+    })
+  )
 }
 
-//if(!module.parent) {
-//  var parseCSV = require('./parse-csv')
-//  pull(
-//    require('stream-to-pull-stream').read(process.stdin),
-//    parseCSV(),
-//    pull.collect(function (err, table) {
-//      graph(table).pngStream().pipe(process.stdout)
-//    })
-//  )
-//}
-//
 

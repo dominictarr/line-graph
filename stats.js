@@ -1,13 +1,14 @@
 
 var pull = require('pull-stream')
 
-module.exports = function (cb) {
-  return pull.reduce(function (acc, item) {
+module.exports = function (table) {
+  var headers = table.shift()
+  return table.reduce(function (acc, item) {
     item.forEach(function (e, i) {
       if(isNaN(e)) return acc[i] = null
 
       if(acc[i] == null)
-        acc[i] = {sum: e, count: 1, mean: e, min: e, max: e}
+        acc[i] = {sum: e, count: 1, mean: e, min: e, max: e, title: headers[i].name || headers[i]}
       else {
         var stat = acc[i]
         stat.sum += e
@@ -19,5 +20,5 @@ module.exports = function (cb) {
       }
     })
     return acc
-  }, [], cb)
+  }, [])
 }

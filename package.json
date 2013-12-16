@@ -1,6 +1,6 @@
 {
-  "name": "autograph",
-  "description": "",
+  "name": "line-graph",
+  "description": "very simple line-graph",
   "version": "0.0.0",
   "homepage": "https://github.com/dominictarr/autograph",
   "repository": {
@@ -8,6 +8,7 @@
     "url": "git://github.com/dominictarr/autograph.git"
   },
   "dependencies": {
+    "canvas": "1.1"
   },
   "devDependencies": {
   },

@@ -1,8 +1,8 @@
 [
   [
-    "N",
-    " t",
-    " N/t",
+    "Items",
+    " Time",
+    " Items/Millisecond",
     " hash"
   ],
   [

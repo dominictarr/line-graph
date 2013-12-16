@@ -3,7 +3,14 @@ module.exports =
     if(ctx.getContext) //check if a canvas was passed in
       ctx = ctx.getContext('2d')
     return {
-      text: function (string, vec) {
+      text: function (string, vec, opts) {
+        if(opts && opts.rotate === true) {
+          ctx.save();
+          ctx.translate(vec.x, vec.y)
+          ctx.rotate(Math.PI/2)
+          ctx.fillText(string, 0, 0);
+          ctx.restore(); return this
+        }
         ctx.fillText(string, vec.x, vec.y); return this
       },
       textAlign: function (style) {
@@ -25,6 +32,10 @@ module.exports =
       strokeStyle: function (style) {
         if(!arguments.length) return ctx.strokeStyle
         ctx.strokeStyle = style; return this
+      },
+      fillStyle: function (style) {
+        if(!arguments.length) return ctx.fillStyle
+        ctx.fillStyle = style; return this
       },
     }
   }
