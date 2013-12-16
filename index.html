@@ -1,0 +1,1618 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0" name="viewport" />
+<meta charset=utf-8></head>
+<body></body>
+<script language=javascript>
+;(function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);throw new Error("Cannot find module '"+o+"'")}var f=n[o]={exports:{}};t[o][0].call(f.exports,function(e){var n=t[o][1][e];return s(n?n:e)},f,f.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
+var process=require("__browserify_process");
+
+var Canvas = require('canvas-browserify')
+var getStats = require('./stats')
+var pull = require('pull-stream')
+var Vec2 = require('vec2')
+var vecCanvas = require('./vec2-canvas')
+
+function v (x, y) {
+  return new Vec2(x, y)
+}
+
+function find (ary, test) {
+  for(var i in ary)
+    if(test(ary[i], i, ary))
+      return ary[i]
+}
+
+/*
+now, we can only support 2 scales, maximum.
+(to be drawn on the left and the right side)
+*/
+
+//hmm, would a regular expression dsl be easier to read?
+//rx(/([\w\s/]+)/).whitespace().maybe(/<([^>])>/).toRegExp()
+
+function parseUnits (header) {
+  var m = /([\w\s]+)\s+\(([^\)]+)\)/.exec(header)
+  if(!m) return {name: header}
+  return {name: m[1], units: m[2]}
+}
+
+var graph = module.exports = function (table, opts) {
+  opts = opts || {}
+  var canvas = CANVAS = Canvas()
+  canvas.width = opts.width || 300
+  canvas.height = opts.height || 150
+  var ctx = CTX = canvas.getContext('2d')
+
+  //uh, actually, I don't need this yet,
+  //because I only have 3 columns.
+  var stats
+  var headers = table.shift().map(parseUnits)
+
+  table.sort(function (a, b) {
+    return a[0] - b[0]
+  })
+
+  //this will be synchronous, because table is an array.
+  pull(
+    pull.values(table),
+    pull.map(function (e) {
+      if(isNaN(e[0])) return e
+      e[0] = Math.log(e[0])
+      return e
+    }),
+    getStats(function (err, _stats) {
+      if(err) throw err
+      stats = _stats
+  }))
+  
+
+  var margin = 60
+
+  stats.forEach(function (stat, i) {
+    if(!stat || !i) return
+    stat.min = 0
+    stat.range = stat.max
+  })
+
+  var stat = stats[0]
+  var xScale = (canvas.width - margin*2) / (stat.max - stat.min)
+  var xMin = stat.min
+
+  var colours = ['red', 'blue', 'green', 'yellow']
+
+  function round (n) {
+    return parseFloat(n.toPrecision(5))
+  }
+
+  //draw scale on the sides of the graph
+  function drawScale (stat, min, max, align, log) {
+    var draw =
+      vecCanvas(ctx).strokeStyle('black').start().move(min).line(max)
+
+    function toLog (value) {
+      return log ? Math.pow(Math.E, value) : value
+    }
+
+    var textWidth = ctx.measureText(round(toLog(stat.max))).width
+    var textHeight = parseInt(CTX.font)
+    var textSize = align.x ? textHeight : textWidth
+    //how many marks can fit on the graph?
+    var room   = v(max).subtract(min).length()
+    var vec    = v(max).subtract(min).normalize()
+    var offset = v(align).multiply(textHeight + 5)
+    var dash = v(align).multiply(5)
+
+    var ranges = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000]
+
+    var xScale = room/(stat.max - stat.min)
+//    var spacing = room/(textWidth*3)
+    var step = find(ranges, function (e) {
+      return room / (stat.range / e) > textSize*3 ? e : null
+    })
+    var marks = Math.floor(stat.range/step)
+    //console.log(marks, spacing)
+    var markV = v(), textV = v()
+    for(var i = 0; i <= marks; i++) {
+      var value = round(((xScale*stat.range)/marks)*i)
+      var value = step * i
+      var x =  margin + value*xScale
+
+      markV.set(vec).multiply(value*xScale).add(min)
+      console.log(markV.x, markV.y, {x: x, y: canvas.height - (margin/2 - 5)})
+ 
+      draw.textAlign(
+          align.x < 0 ? 'right'
+        : align.x > 0 ? 'left'
+        :               'center'
+      )
+  
+      draw
+        .text(
+          round(toLog(stat.min + value)),
+          textV.set(markV).add(offset)
+        )
+        .move(markV)
+        .line(markV.add(dash))
+    }
+    draw.stroke()
+  }
+
+  drawScale(
+    stats[0],
+    v(margin, canvas.height - margin),
+    v(canvas.width - margin, canvas.height - margin),
+    v(0, 1),
+    true
+  )
+
+  drawScale(
+    stats[1],
+    v(margin, canvas.height - margin),
+    v(margin, margin),
+    v(-1, 0)
+  )
+
+  drawScale(
+    stats[2],
+    v(canvas.width - margin, canvas.height - margin),
+    v(canvas.width - margin, margin),
+    v(1, 0)
+  )
+
+  headers.forEach(function (header, col) {
+    if(!col) return
+    var stat = stats[col]
+    if(!stat) return
+    var yScale = (canvas.height - margin*2)/(stat.max - stat.min)
+    var _x = 0, _y = 0
+    ctx.strokeStyle = colours.shift()
+    //'#'+ (Math.random().toString().substring(2, 8))
+    ctx.beginPath()
+    table.forEach(function (row, n) {
+      var value = row[col]
+      if(isNaN(value)) return
+      var y = margin + (value - stat.min)*yScale
+      var x = margin + (row[0] - xMin)*xScale
+      ;(n ? ctx.lineTo : ctx.moveTo).call(ctx, x, canvas.height - y)
+    })
+    ctx.stroke()
+  })
+  
+  return canvas
+}
+
+if(process.title === 'browser') {
+  document.body.appendChild(
+    graph(require('./test.json'), {width: 1000, height:600}))
+}
+
+//if(!module.parent) {
+//  var parseCSV = require('./parse-csv')
+//  pull(
+//    require('stream-to-pull-stream').read(process.stdin),
+//    parseCSV(),
+//    pull.collect(function (err, table) {
+//      graph(table).pngStream().pipe(process.stdout)
+//    })
+//  )
+//}
+//
+
+
+},{"./stats":9,"./test.json":10,"./vec2-canvas":11,"__browserify_process":13,"canvas-browserify":2,"pull-stream":3,"vec2":12}],2:[function(require,module,exports){
+
+var Canvas = module.exports = function Canvas (w, h) {
+  var canvas = document.createElement('canvas')
+  canvas.width = w || 300
+  canvas.height = h || 150
+  return canvas
+}
+
+Canvas.Image = function () {
+  var img = document.createElement('img')
+  return img
+}
+
+
+
+
+},{}],3:[function(require,module,exports){
+var sources  = require('./sources')
+var sinks    = require('./sinks')
+var throughs = require('./throughs')
+var u        = require('pull-core')
+
+function isFunction (fun) {
+  return 'function' === typeof fun
+}
+
+function isReader (fun) {
+  return fun && (fun.type === "Through" || fun.length === 1)
+}
+var exports = module.exports = function pull () {
+  var args = [].slice.call(arguments)
+
+  if(isReader(args[0]))
+    return function (read) {
+      args.unshift(read)
+      return pull.apply(null, args)
+    }
+
+  var read = args.shift()
+
+  //if the first function is a duplex stream,
+  //pipe from the source.
+  if(isFunction(read.source))
+    read = read.source
+
+  function next () {
+    if(!args.length) throw new Error('ran out of streams')
+    var s = args.shift()
+
+    if(null == s)
+      return next()
+
+    if(isFunction(s)) return s
+    return function (read) {
+      s.sink(read)
+      //this supports pipeing through a duplex stream
+      //pull(a, b, a) "telephone style".
+      //if this stream is in the a (first & last position)
+      //s.source will have already been used, but this should never be called
+      //so that is okay.
+      return s.source
+    }
+  }
+
+  while(args.length)
+    read = next() (read)
+
+  return read
+}
+
+
+for(var k in sources)
+  exports[k] = u.Source(sources[k])
+
+for(var k in throughs)
+  exports[k] = u.Through(throughs[k])
+
+for(var k in sinks)
+  exports[k] = u.Sink(sinks[k])
+
+var maybe = require('./maybe')(exports)
+
+for(var k in maybe)
+  exports[k] = maybe[k]
+
+exports.Duplex  = 
+exports.Through = exports.pipeable       = u.Through
+exports.Source  = exports.pipeableSource = u.Source
+exports.Sink    = exports.pipeableSink   = u.Sink
+
+
+
+},{"./maybe":4,"./sinks":6,"./sources":7,"./throughs":8,"pull-core":5}],4:[function(require,module,exports){
+var u = require('pull-core')
+var prop = u.prop
+var id   = u.id
+var maybeSink = u.maybeSink
+
+module.exports = function (pull) {
+
+  var exports = {}
+  var drain = pull.drain
+
+  var find = 
+  exports.find = function (test, cb) {
+    return maybeSink(function (cb) {
+      var ended = false
+      if(!cb)
+        cb = test, test = id
+      else
+        test = prop(test) || id
+
+      return drain(function (data) {
+        if(test(data)) {
+          ended = true
+          cb(null, data)
+        return false
+        }
+      }, function (err) {
+        if(ended) return //already called back
+        cb(err === true ? null : err, null)
+      })
+
+    }, cb)
+  }
+
+  var reduce = exports.reduce = 
+  function (reduce, acc, cb) {
+    
+    return maybeSink(function (cb) {
+      return drain(function (data) {
+        acc = reduce(acc, data)
+      }, function (err) {
+        cb(err, acc)
+      })
+
+    }, cb)
+  }
+
+  var collect = exports.collect = exports.writeArray =
+  function (cb) {
+    return reduce(function (arr, item) {
+      arr.push(item)
+      return arr
+    }, [], cb)
+  }
+
+  var concat = exports.concat =
+  function (cb) {
+    return reduce(function (a, b) {
+      return a + b
+    }, '', cb)
+  }
+
+  return exports
+}
+
+},{"pull-core":5}],5:[function(require,module,exports){
+exports.id = 
+function (item) {
+  return item
+}
+
+exports.prop = 
+function (map) {  
+  if('string' == typeof map) {
+    var key = map
+    return function (data) { return data[key] }
+  }
+  return map
+}
+
+exports.tester = function (test) {
+  if(!test) return exports.id
+  if('object' === typeof test
+    && 'function' === typeof test.test)
+      return test.test.bind(test)
+  return exports.prop(test) || exports.id
+}
+
+exports.addPipe = addPipe
+
+function addPipe(read) {
+  if('function' !== typeof read)
+    return read
+
+  read.pipe = read.pipe || function (reader) {
+    if('function' != typeof reader)
+      throw new Error('must pipe to reader')
+    return addPipe(reader(read))
+  }
+  read.type = 'Source'
+  return read
+}
+
+var Source =
+exports.Source =
+function Source (createRead) {
+  function s() {
+    var args = [].slice.call(arguments)
+    return addPipe(createRead.apply(null, args))
+  }
+  s.type = 'Source'
+  return s
+}
+
+
+var Through =
+exports.Through = 
+function (createRead) {
+  return function () {
+    var args = [].slice.call(arguments)
+    var piped = []
+    function reader (read) {
+      args.unshift(read)
+      read = createRead.apply(null, args)
+      while(piped.length)
+        read = piped.shift()(read)
+      return read
+      //pipeing to from this reader should compose...
+    }
+    reader.pipe = function (read) {
+      piped.push(read) 
+      if(read.type === 'Source')
+        throw new Error('cannot pipe ' + reader.type + ' to Source')
+      reader.type = read.type === 'Sink' ? 'Sink' : 'Through'
+      return reader
+    }
+    reader.type = 'Through'
+    return reader
+  }
+}
+
+var Sink =
+exports.Sink = 
+function Sink(createReader) {
+  return function () {
+    var args = [].slice.call(arguments)
+    if(!createReader)
+      throw new Error('must be createReader function')
+    function s (read) {
+      args.unshift(read)
+      return createReader.apply(null, args)
+    }
+    s.type = 'Sink'
+    return s
+  }
+}
+
+
+exports.maybeSink = 
+exports.maybeDrain = 
+function (createSink, cb) {
+  if(!cb)
+    return Through(function (read) {
+      var ended
+      return function (close, cb) {
+        if(close) return read(close, cb)
+        if(ended) return cb(ended)
+
+        createSink(function (err, data) {
+          ended = err || true
+          if(!err) cb(null, data)
+          else     cb(ended)
+        }) (read)
+      }
+    })()
+
+  return Sink(function (read) {
+    return createSink(cb) (read)
+  })()
+}
+
+
+},{}],6:[function(require,module,exports){
+var drain = exports.drain = function (read, op, done) {
+
+  ;(function next() {
+    var loop = true, cbed = false
+    while(loop) {
+      cbed = false
+      read(null, function (end, data) {
+        cbed = true
+        if(end) {
+          loop = false
+          done && done(end === true ? null : end)
+        }
+        else if(op && false === op(data)) {
+          loop = false
+          read(true, done || function () {})
+        }
+        else if(!loop){
+          next()
+        }
+      })
+      if(!cbed) {
+        loop = false
+        return
+      }
+    }
+  })()
+}
+
+var onEnd = exports.onEnd = function (read, done) {
+  return drain(read, null, done)
+}
+
+var log = exports.log = function (read, done) {
+  return drain(read, function (data) {
+    console.log(data)
+  }, done)
+}
+
+
+},{}],7:[function(require,module,exports){
+
+var keys = exports.keys =
+function (object) {
+  return values(Object.keys(object))
+}
+
+var once = exports.once =
+function (value) {
+  return function (abort, cb) {
+    if(abort) return cb(abort)
+    if(value != null) {
+      var _value = value; value = null
+      cb(null, _value)
+    } else
+      cb(true)
+  }
+}
+
+var values = exports.values = exports.readArray =
+function (array) {
+  if(!Array.isArray(array))
+    array = Object.keys(array).map(function (k) {
+      return array[k]
+    })
+  var i = 0
+  return function (end, cb) {
+    if(end)
+      return cb && cb(end)  
+    cb(i >= array.length || null, array[i++])
+  }
+}
+
+
+var count = exports.count = 
+function (max) {
+  var i = 0; max = max || Infinity
+  return function (end, cb) {
+    if(end) return cb && cb(end)
+    if(i > max)
+      return cb(true)
+    cb(null, i++)
+  }
+}
+
+var infinite = exports.infinite = 
+function (generate) {
+  generate = generate || Math.random
+  return function (end, cb) {
+    if(end) return cb && cb(end)
+    return cb(null, generate())
+  }
+}
+
+var defer = exports.defer = function () {
+  var _read, cbs = [], _end
+
+  var read = function (end, cb) {
+    if(!_read) {
+      _end = end
+      cbs.push(cb)
+    } 
+    else _read(end, cb)
+  }
+  read.resolve = function (read) {
+    if(_read) throw new Error('already resolved')
+    _read = read
+    if(!_read) throw new Error('no read cannot resolve!' + _read)
+    while(cbs.length)
+      _read(_end, cbs.shift())
+  }
+  read.abort = function(err) {
+    read.resolve(function (_, cb) {
+      cb(err || true)
+    })
+  }
+  return read
+}
+
+var empty = exports.empty = function () {
+  return function (abort, cb) {
+    cb(true)
+  }
+}
+
+var depthFirst = exports.depthFirst =
+function (start, createStream) {
+  var reads = []
+
+  reads.unshift(once(start))
+
+  return function next (end, cb) {
+    if(!reads.length)
+      return cb(true)
+    reads[0](end, function (end, data) {
+      if(end) {
+        //if this stream has ended, go to the next queue
+        reads.shift()
+        return next(null, cb)
+      }
+      reads.unshift(createStream(data))
+      cb(end, data)
+    })
+  }
+}
+//width first is just like depth first,
+//but push each new stream onto the end of the queue
+var widthFirst = exports.widthFirst = 
+function (start, createStream) {
+  var reads = []
+
+  reads.push(once(start))
+
+  return function next (end, cb) {
+    if(!reads.length)
+      return cb(true)
+    reads[0](end, function (end, data) {
+      if(end) {
+        reads.shift()
+        return next(null, cb)
+      }
+      reads.push(createStream(data))
+      cb(end, data)
+    })
+  }
+}
+
+//this came out different to the first (strm)
+//attempt at leafFirst, but it's still a valid
+//topological sort.
+var leafFirst = exports.leafFirst = 
+function (start, createStream) {
+  var reads = []
+  var output = []
+  reads.push(once(start))
+  
+  return function next (end, cb) {
+    reads[0](end, function (end, data) {
+      if(end) {
+        reads.shift()
+        if(!output.length)
+          return cb(true)
+        return cb(null, output.shift())
+      }
+      reads.unshift(createStream(data))
+      output.unshift(data)
+      next(null, cb)
+    })
+  }
+}
+
+
+},{}],8:[function(require,module,exports){
+var process=require("__browserify_process");var u      = require('pull-core')
+var sources = require('./sources')
+var sinks = require('./sinks')
+
+var prop   = u.prop
+var id     = u.id
+var tester = u.tester
+
+var map = exports.map = 
+function (read, map) {
+  map = prop(map) || id
+  return function (end, cb) {
+    read(end, function (end, data) {
+      var data = !end ? map(data) : null
+      cb(end, data)
+    })
+  }
+}
+
+var asyncMap = exports.asyncMap =
+function (read, map) {
+  if(!map) return read
+  return function (end, cb) {
+    if(end) return read(end, cb) //abort
+    read(null, function (end, data) {
+      if(end) return cb(end, data)
+      map(data, cb)
+    })
+  }
+}
+
+var paraMap = exports.paraMap =
+function (read, map, width) {
+  if(!map) return read
+  var ended = false, queue = [], _cb
+
+  function drain () {
+    if(!_cb) return
+    var cb = _cb
+    _cb = null
+    if(queue.length)
+      return cb(null, queue.shift())
+    else if(ended && !n)
+      return cb(ended)
+    _cb = cb
+  }
+
+  function pull () {
+    read(null, function (end, data) {
+      if(end) {
+        ended = end
+        return drain()
+      }
+      n++
+      map(data, function (err, data) {
+        n--
+
+        queue.push(data)
+        drain()
+      })
+
+      if(n < width && !ended)
+        pull()
+    })
+  }
+
+  var n = 0
+  return function (end, cb) {
+    if(end) return read(end, cb) //abort
+    //continue to read while there are less than 3 maps in flight
+    _cb = cb
+    if(queue.length || ended)
+      pull(), drain()
+    else pull()
+  }
+  return highWaterMark(asyncMap(read, map), width)
+}
+
+var filter = exports.filter =
+function (read, test) {
+  //regexp
+  test = tester(test)
+  return function next (end, cb) {
+    read(end, function (end, data) {
+      if(!end && !test(data))
+        return next(end, cb)
+      cb(end, data)
+    })
+  }
+}
+
+var filterNot = exports.filterNot =
+function (read, test) {
+  test = tester(test)
+  return filter(read, function (e) {
+    return !test(e)
+  })
+}
+
+var through = exports.through = 
+function (read, op, onEnd) {
+  var a = false
+  function once (abort) {
+    if(a || !onEnd) return
+    a = true
+    onEnd(abort === true ? null : abort)
+  }
+
+  return function (end, cb) {
+    if(end) once(end)
+    return read(end, function (end, data) {
+      if(!end) op && op(data)
+      else once(end)
+      cb(end, data)
+    })
+  }
+}
+
+var take = exports.take =
+function (read, test) {
+  var ended = false
+  if('number' === typeof test) {
+    var n = test; test = function () {
+      return n --
+    }
+  }
+
+  return function (end, cb) {
+    if(ended) return cb(ended)
+    if(ended = end) return read(ended, cb)
+
+    read(null, function (end, data) {
+      if(ended = ended || end) return cb(ended)
+      if(!test(data)) {
+        ended = true
+        read(true, function (end, data) {
+          cb(ended, data)
+        })
+      }
+      else
+        cb(null, data)
+    })
+  }
+}
+
+var unique = exports.unique = function (read, field, invert) {
+  field = prop(field) || id
+  var seen = {}
+  return filter(read, function (data) {
+    var key = field(data)
+    if(seen[key]) return !!invert //false, by default
+    else seen[key] = true
+    return !invert //true by default
+  })
+}
+
+var nonUnique = exports.nonUnique = function (read, field) {
+  return unique(read, field, true)
+}
+
+var group = exports.group =
+function (read, size) {
+  var ended; size = size || 5
+  var queue = []
+
+  return function (end, cb) {
+    //this means that the upstream is sending an error.
+    if(end) return read(ended = end, cb)
+    //this means that we read an end before.
+    if(ended) return cb(ended)
+
+    read(null, function next(end, data) {
+      if(ended = ended || end) {
+        if(!queue.length)
+          return cb(ended)
+
+        var _queue = queue; queue = []
+        return cb(null, _queue)
+      }
+      queue.push(data)
+      if(queue.length < size)
+        return read(null, next)
+
+      var _queue = queue; queue = []
+      cb(null, _queue)
+    })
+  }
+}
+
+var flatten = exports.flatten = function (read) {
+  var _read
+  return function (abort, cb) {
+    if(_read) nextChunk()
+    else      nextStream()
+
+    function nextChunk () {
+      _read(null, function (end, data) {
+        if(end) nextStream()
+        else    cb(null, data)
+      })
+    }
+    function nextStream () {
+      read(null, function (end, stream) {
+        if(end)
+          return cb(end)
+        if(Array.isArray(stream))
+          stream = sources.values(stream)
+        else if('function' != typeof stream)
+          throw new Error('expected stream of streams')
+        
+        _read = stream
+        nextChunk()
+      })
+    }
+  }
+}
+
+var prepend =
+exports.prepend =
+function (read, head) {
+
+  return function (abort, cb) {
+    if(head !== null) {
+      if(abort)
+        return read(abort, cb)
+      var _head = head
+      head = null
+      cb(null, _head)
+    } else {
+      read(abort, cb)
+    }
+  }
+
+}
+
+//var drainIf = exports.drainIf = function (op, done) {
+//  sinks.drain(
+//}
+
+var _reduce = exports._reduce = function (read, reduce, initial) {
+  return function (close, cb) {
+    if(close) return read(close, cb)
+    if(ended) return cb(ended)
+
+    sinks.drain(function (item) {
+      initial = reduce(initial, item)
+    }, function (err, data) {
+      ended = err || true
+      if(!err) cb(null, initial)
+      else     cb(ended)
+    })
+    (read)
+  }
+}
+
+var nextTick = process.nextTick
+
+var highWaterMark = exports.highWaterMark = 
+function (read, highWaterMark) {
+  var buffer = [], waiting = [], ended, reading = false
+  highWaterMark = highWaterMark || 10
+
+  function readAhead () {
+    while(waiting.length && (buffer.length || ended))
+      waiting.shift()(ended, ended ? null : buffer.shift())
+  }
+
+  function next () {
+    if(ended || reading || buffer.length >= highWaterMark)
+      return
+    reading = true
+    return read(ended, function (end, data) {
+      reading = false
+      ended = ended || end
+      if(data != null) buffer.push(data)
+      
+      next(); readAhead()
+    })
+  }
+
+  nextTick(next)
+
+  return function (end, cb) {
+    ended = ended || end
+    waiting.push(cb)
+
+    next(); readAhead()
+  }
+}
+
+
+
+
+},{"./sinks":6,"./sources":7,"__browserify_process":13,"pull-core":5}],9:[function(require,module,exports){
+
+var pull = require('pull-stream')
+
+module.exports = function (cb) {
+  return pull.reduce(function (acc, item) {
+    item.forEach(function (e, i) {
+      if(isNaN(e)) return acc[i] = null
+
+      if(acc[i] == null)
+        acc[i] = {sum: e, count: 1, mean: e, min: e, max: e}
+      else {
+        var stat = acc[i]
+        stat.sum += e
+        stat.count ++
+        stat.min = Math.min(e, stat.min)
+        stat.max = Math.max(e, stat.max)
+        stat.range = stat.max - stat.min
+        stat.mean = stat.sum / stat.count
+      }
+    })
+    return acc
+  }, [], cb)
+}
+
+},{"pull-stream":3}],10:[function(require,module,exports){
+module.exports=[
+  [
+    "N",
+    " t",
+    " N/t",
+    " hash"
+  ],
+  [
+    1001,
+    3,
+    333.6666666666667,
+    " 5b693c94fb68e8e9d33171245ba8e98bfdc8474f"
+  ],
+  [
+    1415,
+    2,
+    707.5,
+    " cdc368dbb4e7ef9ee44b72867df3a42a7ea0191e"
+  ],
+  [
+    2001,
+    1,
+    2001,
+    " e2bdd981b7d27f3ef91ad9bf8e45c37e3db78858"
+  ],
+  [
+    2829,
+    3,
+    943,
+    " 11a3c509f996213011f1b3c61471f8897d59c480"
+  ],
+  [
+    4001,
+    5,
+    800.2,
+    " 4b2be72308d104ee7a97e247dc7a176fb7d72737"
+  ],
+  [
+    5657,
+    6,
+    942.8333333333334,
+    " 213d4cd1069296446c07d3bb67d05503db98b1a4"
+  ],
+  [
+    8001,
+    14,
+    571.5,
+    " 8f822d812a205e1a224afc270816515ba99b0404"
+  ],
+  [
+    11314,
+    12,
+    942.8333333333334,
+    " 8bbc9cdad89ec771a8d6a485ee7232f6f32a1685"
+  ],
+  [
+    16001,
+    25,
+    640.04,
+    " a68d1af1c46a8798b47ef22c2566cb5fbef7a284"
+  ],
+  [
+    22628,
+    48,
+    471.4166666666667,
+    " f2a9d79880b9c8d9b11810d9d17d9ac6a1fbe0c0"
+  ],
+  [
+    32001,
+    37,
+    864.8918918918919,
+    " 95ea6835e42d32d29ddadf7d72838817205979b0"
+  ],
+  [
+    45255,
+    84,
+    538.75,
+    " 67f7775acd85cc286d46eeb6bdd71e6e34248705"
+  ],
+  [
+    64001,
+    79,
+    810.1392405063291,
+    " 2bbd7e34010e98128b7a47a91c07174e00a49983"
+  ],
+  [
+    90510,
+    182,
+    497.3076923076923,
+    " 71afa2b69451e797422a67634f41554dab16aef4"
+  ],
+  [
+    128001,
+    185,
+    691.8972972972973,
+    " 693c507aa905485c9fe9f3d3e31bd7d7411b06af"
+  ],
+  [
+    181020,
+    364,
+    497.3076923076923,
+    " d7d69d895f2ad13e7f9891ab15ce6ce53c66374a"
+  ],
+  [
+    256001,
+    658,
+    389.05927051671733,
+    " 7622188f0ed0a0afd1203f57b28c8b5ab4e72f13"
+  ],
+  [
+    362039,
+    579,
+    625.2832469775475,
+    " 46b35639b20cb4ec87d36c3c3bd1e88166c3bfb8"
+  ],
+  [
+    512001,
+    1349,
+    379.54114158636025,
+    " da8d0a71b352188b3ca207de5022708825830f9f"
+  ],
+  [
+    724078,
+    1276,
+    567.4592476489029,
+    " cb33bdb46c9818ea4a415392e5a1eef4450c9f53"
+  ],
+  [
+    1024001,
+    2771,
+    369.54204258390473,
+    " 4a2150d09a86528ae6108fa16f7d262d18b60e48"
+  ],
+  [
+    1448155,
+    4637,
+    312.304291567824,
+    " c4b9ea7c70248624326f76212688d13666975b1f"
+  ],
+  [
+    2048001,
+    9284,
+    220.5946790176648,
+    " 40b6caae1d38b7d7be6cc4f866aecd93368ddbfe"
+  ]
+]
+
+},{}],11:[function(require,module,exports){
+module.exports =
+  function vecDraw (ctx) {
+    if(ctx.getContext) //check if a canvas was passed in
+      ctx = ctx.getContext('2d')
+    return {
+      text: function (string, vec) {
+        ctx.fillText(string, vec.x, vec.y); return this
+      },
+      textAlign: function (style) {
+        if(!arguments.length) return ctx.textAlign
+        ctx.textAlign = style; return this
+      },
+      move: function (vec) {
+        ctx.moveTo(vec.x, vec.y); return this
+      },
+      line: function (vec) {
+        ctx.lineTo(vec.x, vec.y); return this
+      },
+      start: function () {
+        ctx.beginPath(); return this
+      },
+      stroke: function () {
+        ctx.stroke(); return this
+      },
+      strokeStyle: function (style) {
+        if(!arguments.length) return ctx.strokeStyle
+        ctx.strokeStyle = style; return this
+      },
+    }
+  }
+
+
+},{}],12:[function(require,module,exports){
+;(function inject(clean, precision, undef) {
+
+  function Vec2(x, y) {
+    if (!(this instanceof Vec2)) {
+      return new Vec2(x, y);
+    }
+
+    if('object' === typeof x && x) {
+      this.y = x.y || 0;
+      this.x = x.x || 0;
+      return
+    }
+
+    this.x = Vec2.clean(x || 0);
+    this.y = Vec2.clean(y || 0);
+  };
+
+  Vec2.prototype = {
+    change : function(fn) {
+      if (fn) {
+        if (this.observers) {
+          this.observers.push(fn);
+        } else {
+          this.observers = [fn];
+        }
+      } else if (this.observers) {
+        for (var i=this.observers.length-1; i>=0; i--) {
+          this.observers[i](this);
+        }
+      }
+
+      return this;
+    },
+
+    ignore : function(fn) {
+      this.observers = this.observers.filter(function(cb) {
+        return cb !== fn;
+      });
+
+      return this;
+    },
+
+    dirty : function() {
+      this._dirty = true
+      this.__cachedLength = null
+      this.__cachedLengthSquared = null
+    },
+
+    // set x and y
+    set: function(x, y, silent) {
+      if('number' != typeof x) {
+        silent = y;
+        y = x.y;
+        x = x.x;
+      }
+      if(this.x === x && this.y === y)
+        return this;
+
+      this.x = Vec2.clean(x);
+      this.y = Vec2.clean(y);
+
+      this.dirty()
+      if(silent !== false)
+        return this.change();
+    },
+
+    // reset x and y to zero
+    zero : function() {
+      return this.set(0, 0);
+    },
+
+    // return a new vector with the same component values
+    // as this one
+    clone : function() {
+      return new Vec2(this.x, this.y);
+    },
+
+    // negate the values of this vector
+    negate : function(returnNew) {
+      if (returnNew) {
+        return new Vec2(-this.x, -this.y);
+      } else {
+        return this.set(-this.x, -this.y);
+      }
+    },
+
+    // Add the incoming `vec2` vector to this vector
+    add : function(vec2, returnNew) {
+      if (!returnNew) {
+        this.x += vec2.x; this.y += vec2.y;
+        return this.change()
+      } else {
+        // Return a new vector if `returnNew` is truthy
+        return new Vec2(
+          this.x + vec2.x,
+          this.y + vec2.y
+        );
+      }
+    },
+
+    // Subtract the incoming `vec2` from this vector
+    subtract : function(vec2, returnNew) {
+      if (!returnNew) {
+        this.x -= vec2.x; this.y -= vec2.y;
+        return this.change()
+      } else {
+        // Return a new vector if `returnNew` is truthy
+        return new Vec2(
+          this.x - vec2.x,
+          this.y - vec2.y
+        );
+      }
+    },
+
+    // Multiply this vector by the incoming `vec2`
+    multiply : function(vec2, returnNew) {
+      var x,y;
+      if ('number' !== typeof vec2) { //.x !== undef) {
+        x = vec2.x;
+        y = vec2.y;
+
+      // Handle incoming scalars
+      } else {
+        x = y = vec2;
+      }
+
+      if (!returnNew) {
+        return this.set(this.x * x, this.y * y);
+      } else {
+        return new Vec2(
+          this.x * x,
+          this.y * y
+        );
+      }
+    },
+
+    // Rotate this vector. Accepts a `Rotation` or angle in radians.
+    //
+    // Passing a truthy `inverse` will cause the rotation to
+    // be reversed.
+    //
+    // If `returnNew` is truthy, a new
+    // `Vec2` will be created with the values resulting from
+    // the rotation. Otherwise the rotation will be applied
+    // to this vector directly, and this vector will be returned.
+    rotate : function(r, inverse, returnNew) {
+      var
+      x = this.x,
+      y = this.y,
+      cos = Math.cos(r),
+      sin = Math.sin(r),
+      rx, ry;
+
+      inverse = (inverse) ? -1 : 1;
+
+      rx = cos * x - (inverse * sin) * y;
+      ry = (inverse * sin) * x + cos * y;
+
+      if (returnNew) {
+        return new Vec2(rx, ry);
+      } else {
+        return this.set(rx, ry);
+      }
+    },
+
+    // Calculate the length of this vector
+    length : function() {
+      var x = this.x, y = this.y;
+      return Math.sqrt(x * x + y * y);
+    },
+
+    // Get the length squared. For performance, use this instead of `Vec2#length` (if possible).
+    lengthSquared : function() {
+      var x = this.x, y = this.y;
+      return x*x+y*y;
+    },
+
+    // Return the distance betwen this `Vec2` and the incoming vec2 vector
+    // and return a scalar
+    distance : function(vec2) {
+      var x = this.x - vec2.x;
+      var y = this.y - vec2.y;
+      return Math.sqrt(x*x + y*y)
+    },
+
+    // Convert this vector into a unit vector.
+    // Returns the length.
+    normalize : function(returnNew) {
+      var length = this.length();
+
+      // Collect a ratio to shrink the x and y coords
+      var invertedLength = (length < Number.MIN_VALUE) ? 0 : 1/length;
+
+      if (!returnNew) {
+        // Convert the coords to be greater than zero
+        // but smaller than or equal to 1.0
+        return this.set(this.x * invertedLength, this.y * invertedLength);
+      } else {
+        return new Vec2(this.x * invertedLength, this.y * invertedLength)
+      }
+    },
+
+    // Determine if another `Vec2`'s components match this one's
+    // also accepts 2 scalars
+    equal : function(v, w) {
+      if (w === undef) {
+        return (
+          this.x === v.x &&
+          this.y == v.y
+        );
+      } else {
+        return (
+          this.x === v &&
+          this.y === w
+        )
+      }
+    },
+
+    // Return a new `Vec2` that contains the absolute value of
+    // each of this vector's parts
+    abs : function(returnNew) {
+      var x = Math.abs(this.x), y = Math.abs(this.y);
+
+      if (returnNew) {
+        return new Vec2(x, y);
+      } else {
+        return this.set(x, y);
+      }
+    },
+
+    // Return a new `Vec2` consisting of the smallest values
+    // from this vector and the incoming
+    //
+    // When returnNew is truthy, a new `Vec2` will be returned
+    // otherwise the minimum values in either this or `v` will
+    // be applied to this vector.
+    min : function(v, returnNew) {
+      var
+      tx = this.x,
+      ty = this.y,
+      vx = v.x,
+      vy = v.y,
+      x = tx < vx ? tx : vx,
+      y = ty < vy ? ty : vy;
+
+      if (returnNew) {
+        return new Vec2(x, y);
+      } else {
+        return this.set(x, y);
+      }
+    },
+
+    // Return a new `Vec2` consisting of the largest values
+    // from this vector and the incoming
+    //
+    // When returnNew is truthy, a new `Vec2` will be returned
+    // otherwise the minimum values in either this or `v` will
+    // be applied to this vector.
+    max : function(v, returnNew) {
+      var
+      tx = this.x,
+      ty = this.y,
+      vx = v.x,
+      vy = v.y,
+      x = tx > vx ? tx : vx,
+      y = ty > vy ? ty : vy;
+
+      if (returnNew) {
+        return new Vec2(x, y);
+      } else {
+        return this.set(x, y);
+      }
+    },
+
+    // Clamp values into a range.
+    // If this vector's values are lower than the `low`'s
+    // values, then raise them.  If they are higher than
+    // `high`'s then lower them.
+    //
+    // Passing returnNew as true will cause a new Vec2 to be
+    // returned.  Otherwise, this vector's values will be clamped
+    clamp : function(low, high, returnNew) {
+      var ret = this.min(high, true).max(low)
+      if (returnNew) {
+        return ret;
+      } else {
+        return this.set(ret.x, ret.y);
+      }
+    },
+
+    // Perform linear interpolation between two vectors
+    // amount is a decimal between 0 and 1
+    lerp : function(vec, amount) {
+      return this.add(vec.subtract(this, true).multiply(amount), true);
+    },
+
+    // Get the skew vector such that dot(skew_vec, other) == cross(vec, other)
+    skew : function() {
+      // Returns a new vector.
+      return new Vec2(-this.y, this.x)
+    },
+
+    // calculate the dot product between
+    // this vector and the incoming
+    dot : function(b) {
+      return Vec2.clean(this.x * b.x + b.y * this.y);
+    },
+
+    // calculate the perpendicular dot product between
+    // this vector and the incoming
+    perpDot : function(b) {
+      return Vec2.clean(this.x * b.y - this.y * b.x)
+    },
+
+    // Determine the angle between two vec2s
+    angleTo : function(vec) {
+      return Math.atan2(this.perpDot(vec), this.dot(vec));
+    },
+
+    // Divide this vector's components by a scalar
+    divide : function(scalar, returnNew) {
+      if (scalar === 0 || isNaN(scalar)) {
+        throw new Error('division by zero')
+      }
+
+      if (returnNew) {
+        return new Vec2(this.x/scalar, this.y/scalar);
+      }
+
+      return this.set(this.x / scalar, this.y / scalar);
+    },
+
+    isPointOnLine : function(start, end) {
+      return (start.y - this.y) * (start.x - end.x) ===
+             (start.y - end.y) * (start.x - this.x);
+    },
+
+    toArray: function() {
+      return [this.x, this.y];
+    },
+
+    fromArray: function(array) {
+      return this.set(array[0], array[1]);
+    },
+    toJSON: function () {
+      return {x: this.x, y: this.y}
+    }
+  };
+
+  Vec2.fromArray = function(array) {
+    return new Vec2(array[0], array[1]);
+  };
+
+  // Floating point stability
+  Vec2.precision = precision || 8;
+  var p = Math.pow(10, Vec2.precision)
+
+  Vec2.clean = clean || function(val) {
+    if (isNaN(val)) {
+      throw new Error('NaN detected')
+    }
+
+    if (!isFinite(val)) {
+      throw new Error('Infinity detected');
+    }
+
+    if(Math.round(val) === val) {
+      return val;
+    }
+
+    return Math.round(val * p)/p;
+  };
+
+  Vec2.inject = inject;
+
+  if(!clean) {
+    Vec2.fast = inject(function (k) { return k })
+
+    // Expose, but also allow creating a fresh Vec2 subclass.
+    if (typeof module !== 'undefined' && typeof module.exports == 'object') {
+      module.exports = Vec2;
+    } else {
+      window.Vec2 = window.Vec2 || Vec2;
+    }
+  }
+  return Vec2
+})();
+
+
+
+},{}],13:[function(require,module,exports){
+// shim for using process in browser
+
+var process = module.exports = {};
+
+process.nextTick = (function () {
+    var canSetImmediate = typeof window !== 'undefined'
+    && window.setImmediate;
+    var canPost = typeof window !== 'undefined'
+    && window.postMessage && window.addEventListener
+    ;
+
+    if (canSetImmediate) {
+        return function (f) { return window.setImmediate(f) };
+    }
+
+    if (canPost) {
+        var queue = [];
+        window.addEventListener('message', function (ev) {
+            if (ev.source === window && ev.data === 'process-tick') {
+                ev.stopPropagation();
+                if (queue.length > 0) {
+                    var fn = queue.shift();
+                    fn();
+                }
+            }
+        }, true);
+
+        return function nextTick(fn) {
+            queue.push(fn);
+            window.postMessage('process-tick', '*');
+        };
+    }
+
+    return function nextTick(fn) {
+        setTimeout(fn, 0);
+    };
+})();
+
+process.title = 'browser';
+process.browser = true;
+process.env = {};
+process.argv = [];
+
+process.binding = function (name) {
+    throw new Error('process.binding is not supported');
+}
+
+// TODO(shtylman)
+process.cwd = function () { return '/' };
+process.chdir = function (dir) {
+    throw new Error('process.chdir is not supported');
+};
+
+},{}]},{},[1])
+;</script>
+</html>
