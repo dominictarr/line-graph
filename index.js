@@ -75,7 +75,7 @@ var graph = module.exports = function (table, opts) {
   var colours = ['red', 'blue', 'green', 'yellow']
 
   function round (n) {
-    return parseFloat(n.toPrecision(5))
+    return parseFloat(n.toPrecision(3))
   }
 
   //draw scale on the sides of the graph
@@ -94,33 +94,43 @@ var graph = module.exports = function (table, opts) {
     var room   = v(max).subtract(min).length()
     var vec    = v(max).subtract(min).normalize()
     var offset = v(align).multiply(textHeight + 5)
-    var dash = v(align).multiply(5)
+    var dash   = v(align).multiply(5)
 
-    var ranges = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000]
+    var ranges = [1, 2, 5, 10, 20, 50, 100, 200, 500,
+                  1000, 2000, 5000, 1e4, 2e4, 5e4,
+                  1e5, 2e5, 5e5, 1e6, 2e6, 5e6, 1e7]
 
     var xScale = room/(stat.max - stat.min)
-//    var spacing = room/(textWidth*3)
-    var step = find(ranges, function (e) {
+    //figure out step size for linear axis
+    var _step = !log ? find(ranges, function (e) {
       return room / (stat.range / e) > textSize*3 ? e : null
-    })
-    var marks = Math.floor(stat.range/step)
+    }) : 1
+
+    function step (i) {
+      return !log ? _step * i 
+      : (Math.log(Math.pow(Math.E, round(stat.min)) * Math.pow(Math.pow(10, 1), i)) - stat.min)
+    }
+
+    var marks = Math.floor(stat.range/_step)
     //console.log(marks, spacing)
     var markV = v(), textV = v()
     for(var i = 0; i <= marks; i++) {
-      var value = round(((xScale*stat.range)/marks)*i)
-      var value = step * i
-      var x =  margin + value*xScale
+      var value = step(i)
+      if(log) {
+        console.error('step', Math.log(value), stat.min + value, _step)
+        console.log('log?', value*xScale, i, value, toLog(stat.min + value))
+//        if(log && Math.log(value) < 0) return
+        markV.set(vec).multiply(value*xScale).add(min)
+      }
+      else
+        markV.set(vec).multiply(value*xScale).add(min)
 
-      markV.set(vec).multiply(value*xScale).add(min)
-      console.log(markV.x, markV.y, {x: x, y: canvas.height - (margin/2 - 5)})
- 
-      draw.textAlign(
-          align.x < 0 ? 'right'
-        : align.x > 0 ? 'left'
-        :               'center'
-      )
-  
       draw
+        .textAlign(
+            align.x < 0 ? 'right'
+          : align.x > 0 ? 'left'
+          :               'center'
+        )
         .text(
           round(toLog(stat.min + value)),
           textV.set(markV).add(offset)
