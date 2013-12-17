@@ -1,9 +1,5 @@
-
-
-var Canvas = require('canvas-browserify')
-var getStats = require('./stats')
-var pull = require('pull-stream')
-var Vec2 = require('vec2')
+var Canvas    = require('canvas-browserify')
+var Vec2      = require('vec2')
 var vecCanvas = require('./vec2-canvas')
 
 function v (x, y) {
@@ -21,15 +17,6 @@ now, we can only support 2 scales, maximum.
 (to be drawn on the left and the right side)
 */
 
-//hmm, would a regular expression dsl be easier to read?
-//rx(/([\w\s/]+)/).whitespace().maybe(/<([^>])>/).toRegExp()
-
-function parseUnits (header) {
-  var m = /([\w\s]+)\s+\(([^\)]+)\)/.exec(header)
-  if(!m) return {name: header}
-  return {name: m[1], units: m[2]}
-}
-
 var graph = module.exports = function (table, opts) {
   opts = opts || {}
   var canvas = CANVAS = Canvas()
@@ -37,49 +24,59 @@ var graph = module.exports = function (table, opts) {
   canvas.height = opts.height || 150
   var ctx = CTX = canvas.getContext('2d')
 
-  //uh, actually, I don't need this yet,
-  //because I only have 3 columns.
-//  var headers = table.shift().map(parseUnits)
+  table.sort()
 
-  table.sort(function (a, b) {
-    return a[0] - b[0]
-  })
+  var colours = ['black', 'red', 'blue', 'green', 'yellow', 'orange', 'purple']
 
   //this will be synchronous, because table is an array.
 
-  var stats = getStats(table.map(function (e) {
-      if(isNaN(e[0])) return e
-      e[0] = Math.log(e[0])
-      return e
-    }))
-//  pull(
-//    pull.values(table),
-//    pull.map(),
-//    getStats(function (err, _stats) {
-//      if(err) throw err
-//      stats = _stats
-//  }))
-//  
+  var stats = table.stats()
   //calculate margin from font height
-
   var textHeight = parseInt(CTX.font)
   var margin = textHeight * 3
 
+  var scales = {}, axis = []
+
+  function defaultTo (n, v) {
+    return n == null ? v : n
+  }
+
   stats.forEach(function (stat, i) {
-    if(!stat || !i) return
+    if(!stat) return
     stat.min = 0
     stat.range = stat.max
+    stat.title = table.header(i).name
+    stat.units = table.header(i).units
+    stat.color =
+    stat.colour = ctx.strokeStyle = colours[i]
+
+    console.log(table.header(i))
+
+    if(i !== 0) {
+      var scale = scales[stat.units] || {}
+      scale.units = stat.units
+      scale.min = Math.min(stat.min, defaultTo(scale.min,  Infinity))
+      scale.max = Math.max(stat.max, defaultTo(scale.max, -Infinity))
+      scale.range = scale.max - scale.min
+      scales[scale.units] = scale
+    }
+
   })
+
+  axis[0] = stats[0]
+
+  for(var u in scales)
+    axis.push(scales[u])
 
   var stat = stats[0]
   var xScale = (canvas.width - margin*2) / (stat.max - stat.min)
   var xMin = stat.min
 
-  var colours = ['black', 'red', 'blue', 'green', 'yellow']
-
   function round (n) {
-    return parseFloat(n.toPrecision(3))
+    return parseFloat(n.toPrecision(opts.precision || 3))
   }
+
+  console.log('scales', axis, scales)
 
   var draw =
     vecCanvas(ctx)
@@ -87,38 +84,47 @@ var graph = module.exports = function (table, opts) {
   var j = 0
 
   //draw scale on the sides of the graph
-  function drawScale (stat, min, max, align, log) {
+  //drawing the actual graph is the easy bit.
+  //but it's the scales that make it useful.
+  function drawScale (scale, log) {
+    var opts = scale.side
+    var min = opts.min, max = opts.max, align = opts.align
     draw.strokeStyle('black').fillStyle('black').start().move(min).line(max)
     
-    function toLog (value) {
+    function toScale (value) {
       return log ? Math.pow(Math.E, value) : value
     }
 
-    var textWidth = ctx.measureText(round(toLog(stat.max))).width
+    var textWidth = ctx.measureText(round(toScale(stat.max))).width
     var textSize = align.x ? textHeight : textWidth
-    //how many marks can fit on the graph?
 
     var room   = v(max).subtract(min).length()
     var vec    = v(max).subtract(min).normalize()
     var offset = v(align).multiply((align.x > 0 ? textHeight : textHeight*1.5))
     var dash   = v(align).multiply(5)
 
-    var ranges = [1, 2, 5, 10, 20, 50, 100, 200, 500,
-                  1000, 2000, 5000, 1e4, 2e4, 5e4,
-                  1e5, 2e5, 5e5, 1e6, 2e6, 5e6, 1e7]
-
-    var xScale = room/(stat.max - stat.min)
+    //how many marks can fit on the graph?
+    //if it's linear, that is simple
+    //if it's logarithmic, that is a little more complex.
+    //for now, we only support powers of 10 on the scale.
+    var xScale = room/(scale.max - scale.min)
     //figure out step size for linear axis
-    var _step = !log ? find(ranges, function (e) {
-      return room / (stat.range / e) > textSize*3 ? e : null
-    }) : 1
+    var _step = !log ? (function () {
+      var i = 0, e
+      while(true) {
+        var e = Math.pow(10, i++)
+        if(room   / (scale.range / e) > textWidth*3) return e
+        if(room*2 / (scale.range / e) > textWidth*3) return e*2
+        if(room*5 / (scale.range / e) > textWidth*3) return e*5
+      }
+    })() : 1
 
     function step (i) {
       return !log ? _step * i 
-      : (Math.log(Math.pow(Math.E, round(stat.min)) * Math.pow(Math.pow(10, 1), i)) - stat.min)
+      : (Math.log(Math.pow(Math.E, round(stat.min)) * Math.pow(Math.pow(10, 1), i)) - scale.min)
     }
 
-    var marks = Math.floor(stat.range/_step)
+    var marks = Math.floor(scale.range/_step)
 
     var markV = v(), textV = v()
     for(var i = 0; i <= marks; i++) {
@@ -128,7 +134,7 @@ var graph = module.exports = function (table, opts) {
       draw
         .textAlign('center')
         .text(
-          round(toLog(stat.min + value)),
+          round(toScale(scale.min + value)),
           textV.set(markV).add(offset),
           {rotate: !!align.x} //90 degrees
         )
@@ -136,48 +142,106 @@ var graph = module.exports = function (table, opts) {
         .line(markV.add(dash))
     }
 
-    if(stat.title)
-      draw.fillStyle(colours[j++]).text(
-        stat.title,
-        min.add(max).divide(2).add(align.multiply((align.x > 0 ? textHeight*2 : textHeight*2.5))),
+    //move this to after drawing the graphs...
+
+    var label = (scale.title || '') + (scale.units ? ' (' + scale.units + ')' : '')
+    if(label) {
+      draw.text(
+        label,
+        v(min).add(max).divide(2).add(v(align).multiply((align.x > 0 ? textHeight*2 : textHeight*2.5))),
         {rotate: !!align.x}
       )
+    }
+
     draw.stroke()
   }
- 
-  drawScale(
-    stats[0],
-    v(margin, canvas.height - margin),
-    v(canvas.width - margin, canvas.height - margin),
-    v(0, 1),
-    true
-  )
 
-  drawScale(
-    stats[1],
-    v(margin, canvas.height - margin),
-    v(margin, margin),
-    v(-1, 0)
-  )
+  function drawLabels (scale, side) {
+    var opts = side || scale.side
+    var min = opts.min, max = opts.max, align = opts.align
+    var onSide = stats.filter(function (stat) {
+      return stat.units === scale.units
+    })
 
-  drawScale(
-    stats[2],
-    v(canvas.width - margin, canvas.height - margin),
-    v(canvas.width - margin, margin),
-    v(1, 0)
-  )
+    var length = 0
+    var labels = onSide.map(function (e) {
+      var label = e.title
+      length += ctx.measureText(label).width + 15
+      return label
+    })
 
-  draw.fillStyle('black').text('Time to Construct Merkle Tree', {x: canvas.width/2, y: textHeight * 2})
+    length += (onSide.length )*5 + ctx.measureText('('+scale.units+')').width
 
-  stats.forEach(function (header, col) {
+    var dir = v(max).subtract(min).normalize()//.multiply(-1)
+    var center =
+      v(min).add(max).divide(2)
+      .add(v(align).multiply((align.x > 0 ? textHeight*2 : textHeight*2.5)))
+
+    var start = v(min)
+      .add(v(align).multiply((align.x > 0 ? textHeight*2 : textHeight*2.5)))
+
+    //v(center).subtract(v(dir).multiply(length/2))
+    var space = v(dir).multiply(textHeight)
+    var line  = v(dir).multiply(textHeight*2)
+    
+    draw.textAlign('left')
+
+    labels.forEach(function (label, i) {
+      var length = ctx.measureText(label).width
+      console.log('label', label, onSide[i].colour, start)
+
+      draw
+        .text(label, start, {rotate: !!align.x})
+  
+      draw
+        .start()
+        .strokeStyle(onSide[i].colour)
+        .move(start.add(v(dir).multiply(length)).add(space))
+        .line(start.add(line))
+        .stroke()
+
+      start.add(space)
+
+      //into position for next label
+    })
+
+    //draw.text('('+scale.units+')', start, {rotate: !!align.x})
+  }
+
+  var sides = [
+    //bottom
+    { min   : v(margin, canvas.height - margin),
+      max   : v(canvas.width - margin, canvas.height - margin),
+      align : v(0, 1)
+    },
+    //left
+    { min   : v(margin, canvas.height - margin),
+      max   : v(margin, margin),
+      align : v(-1, 0)
+    },
+    //right
+    { min   : v(canvas.width - margin, canvas.height - margin),
+      max   : v(canvas.width - margin, margin),
+      align : v(1, 0)
+    }
+  ]
+
+  axis.forEach(function (scale, i) {
+    scale.side = sides[i]
+    drawScale(scale)
+  })
+
+  drawLabels(axis[1], sides[0])
+
+  stats.forEach(function (stat, col) {
     if(!col) return
-    var stat = stats[col]
+    var scale = scales[stat.units]
+
     if(!stat) return
-    var yScale = (canvas.height - margin*2)/(stat.max - stat.min)
+    var yScale = (canvas.height - margin*2)/(scale.max - scale.min)
     var _x = 0, _y = 0
-    ctx.strokeStyle = colours[col]
-    //'#'+ (Math.random().toString().substring(2, 8))
     ctx.beginPath()
+    ctx.strokeStyle = stat.color
     table.forEach(function (row, n) {
       var value = row[col]
       if(isNaN(value)) return
@@ -187,22 +251,18 @@ var graph = module.exports = function (table, opts) {
     })
     ctx.stroke()
   })
+
+  draw
+    .fillStyle('black')
+    .text(opts.title || "Graph o'Data", {x: canvas.width/2, y: textHeight * 2})
   
   return canvas
 }
 
 if(process.title === 'browser') {
+  var createTable = require('dat-table').createTable
   document.body.appendChild(
-    graph(require('./test.json'), {width: 1000, height:600}))
-} else if(!module.parent) {
-  var parseCSV = require('./parse-csv')
-  pull(
-    require('stream-to-pull-stream').read(process.stdin),
-    parseCSV(),
-    pull.collect(function (err, table) {
-      graph(table)//.pngStream().pipe(process.stdout)
-    })
+    graph(createTable(require('./test/fib.json')), {width: 1000, height:600, title: 'fib generators'})
   )
 }
-
 

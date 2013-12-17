@@ -8,10 +8,10 @@
     "url": "git://github.com/dominictarr/autograph.git"
   },
   "dependencies": {
-    "canvas": "1.1"
+    "canvas": "1.1",
+    "dat-table": "~0.0.2"
   },
-  "devDependencies": {
-  },
+  "devDependencies": {},
   "scripts": {
     "test": "set -e; for t in test/*.js; do node $t; done"
   },

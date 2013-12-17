@@ -1,3 +1,7 @@
+function r (v) {
+  return Math.round(v)
+}
+
 module.exports =
   function vecDraw (ctx) {
     if(ctx.getContext) //check if a canvas was passed in
@@ -6,7 +10,7 @@ module.exports =
       text: function (string, vec, opts) {
         if(opts && opts.rotate === true) {
           ctx.save();
-          ctx.translate(vec.x, vec.y)
+          ctx.translate(r(vec.x), r(vec.y))
           ctx.rotate(Math.PI/2)
           ctx.fillText(string, 0, 0);
           ctx.restore(); return this
@@ -18,10 +22,10 @@ module.exports =
         ctx.textAlign = style; return this
       },
       move: function (vec) {
-        ctx.moveTo(vec.x, vec.y); return this
+        ctx.moveTo(r(vec.x), r(vec.y)); return this
       },
       line: function (vec) {
-        ctx.lineTo(vec.x, vec.y); return this
+        ctx.lineTo(r(vec.x), r(vec.y)); return this
       },
       start: function () {
         ctx.beginPath(); return this
