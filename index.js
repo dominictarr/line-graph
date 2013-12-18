@@ -40,8 +40,6 @@ var graph = module.exports = function (ctx, table, opts) {
   var textHeight = parseInt(ctx.font)
   var margin = textHeight * 3
 
-  console.error('colours', colours)
-
   var scales = {}, axis = []
 
   function defaultTo (n, v) {
