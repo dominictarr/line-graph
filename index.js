@@ -1,9 +1,11 @@
 var Canvas    = require('canvas-browserify')
 var Vec2      = require('vec2')
 var vecCanvas = require('./vec2-canvas')
-var drawScale     = require('./scale')
 var ruler     = require('./ruler')
-var drawLabels    = require('./labels')
+var labels    = require('./labels')
+
+//Tau is much easier to visualize.
+//rotating one quarter is Tau/4, etc
 var TAU = 2*Math.PI
 
 function v (x, y) {
@@ -31,16 +33,18 @@ function nColours (N, sat, light) {
   return a
 }
 
-var graph = module.exports = function (canvas, table, opts) {
-  var ctx = canvas.getContext('2d')
+var graph = module.exports = function (ctx, table, opts) {
   opts = opts || {}
+  var width = opts.width || ctx.canvas.width
+  var height = opts.height || ctx.canvas.height
+
   table.sort()
 
   var colours = nColours(table.width() - 1, 100, 50)
 
   var stats = table.stats()
   //calculate margin from font height
-  var textHeight = parseInt(CTX.font)
+  var textHeight = parseInt(ctx.font)
   var margin = textHeight * 3
 
   var scales = {}, axis = []
@@ -74,62 +78,70 @@ var graph = module.exports = function (canvas, table, opts) {
     axis.push(scales[u])
 
   var stat = stats[0]
-  var xScale = (canvas.width - margin*2) / (stat.max - stat.min)
+  var xScale = (width - margin*2) / (stat.max - stat.min)
   var xMin = stat.min
 
   var draw = vecCanvas(ctx)
 
   var j = 0
-
-  //draw scale on the sides of the graph
-  //drawing the actual graph is the easy bit.
-  //but it's the scales that make it useful.
-
-  var sides = [
-    //bottom
-    { min   : v(margin, canvas.height - margin),
-      max   : v(canvas.width - margin, canvas.height - margin),
-      align : v(0, 1)
-    },
-    //left
-    { min   : v(margin, canvas.height - margin),
-      max   : v(margin, margin),
-      align : v(-1, 0)
-    },
-    //right
-    { min   : v(canvas.width - margin, canvas.height - margin),
-      max   : v(canvas.width - margin, margin),
-      align : v(1, 0)
-    }
-  ]
-
   axis.forEach(function (scale, i) {
-    scale.side = sides[i]
-//    drawScale(canvas.getContext('2d'), scale)
     ctx.save()
-    //bottom or left axis stat at bottom left
-    if(i <= 1)
-      ctx.translate(margin, canvas.height - margin)
-    //3rd axis starts at bottom right
-    else
-      ctx.translate(canvas.width - margin, canvas.height - margin)
+      
+      if(i <= 1) //bottom & left axis stat at bottom left
+        ctx.translate(margin, height - margin)
 
-    console.log(i, TAU*-0.25)
-    if(i)
-      ctx.rotate(TAU*-0.25)
+      else //3rd axis starts at bottom right
+        ctx.translate(width - margin, height - margin)
 
-    ruler(ctx, (i ? canvas.height : canvas.width) - margin*2, i==1 ? TAU/2 : 0, scale.min, scale.max)
+      if(i) ctx.rotate(TAU*-0.25)
+
+      ruler(ctx,
+        //length of side or bottom
+        (i ? height : width) - margin*2,
+        //flip labels on left side.
+        i==1 ? TAU/2 : 0,
+        scale.min,
+        scale.max
+      )
     ctx.restore()
   })
 
-  drawLabels(ctx, axis[1], stats, sides[0])
+  function getLabels(scale) {
+    return stats.filter(function (stat) {
+      if(!stat) return
+      return stat.units === scale.units
+    })
+  }
+
+  //two axis graph, draw lables on the bottom.
+  if(axis.length == 2) {
+    ctx.save()
+      ctx.translate(margin, (height - margin) + (textHeight * 2.5))
+      labels(ctx, getLabels(axis[1]))
+    ctx.restore()
+  }
+
+  //three axis graph lables on the sides
+  else if(axis.length == 3) {
+    ctx.save()
+      ctx.translate(margin - (textHeight * 2.5), margin)
+      ctx.rotate(TAU*0.25)
+      labels(ctx, getLabels(axis[1]))
+    ctx.restore()
+
+    ctx.save()
+      ctx.translate((width - margin) + (textHeight * 2), margin)
+      ctx.rotate(TAU*0.25)
+      labels(ctx, getLabels(axis[2]))
+    ctx.restore()
+  }
 
   stats.forEach(function (stat, col) {
-    if(!col) return
+    if(!col || !stat) return
     var scale = scales[stat.units]
 
     if(!stat) return
-    var yScale = (canvas.height - margin*2)/(scale.max - scale.min)
+    var yScale = (height - margin*2)/(scale.max - scale.min)
     var _x = 0, _y = 0
     ctx.beginPath()
     ctx.strokeStyle = stat.color
@@ -138,24 +150,32 @@ var graph = module.exports = function (canvas, table, opts) {
       if(isNaN(value)) return
       var y = margin + (value - stat.min)*yScale
       var x = margin + (row[0] - xMin)*xScale
-      ;(n ? ctx.lineTo : ctx.moveTo).call(ctx, x, canvas.height - y)
+      ;(n ? ctx.lineTo : ctx.moveTo).call(ctx, x, height - y)
     })
     ctx.stroke()
   })
 
   draw
     .fillStyle('black')
-    .text(opts.title || "Graph o'Data", {x: canvas.width/2, y: textHeight * 2})
+    .text(opts.title || "Graph o'Data", {x: width/2, y: textHeight * 2})
   
   return canvas
 }
 
 if(process.title === 'browser') {
+  var createTable = require('dat-table').createTable
+
   var canvas = CANVAS = Canvas()
   canvas.width = 1000
   canvas.height = 600
   var ctx = CTX = canvas.getContext('2d')
-  var createTable = require('dat-table').createTable
-  graph(canvas, createTable(require('./test/fib.json')), {title: 'fib generators'})
+  graph(ctx, createTable(require('./test/fib.json')), {title: 'fib generators'})
+  document.body.appendChild(canvas)
+
+  var canvas = CANVAS = Canvas()
+  canvas.width = 1000
+  canvas.height = 600
+  var ctx = canvas.getContext('2d')
+  graph(ctx, createTable(require('./test/merkle.json')), {title: 'Time to build a merkle tree'})
   document.body.appendChild(canvas)
 }
