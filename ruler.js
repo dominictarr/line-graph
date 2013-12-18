@@ -26,7 +26,7 @@ but actually this is working pretty well.
 */
 
 function ruler (ctx, length, nRotate, min, max) {
-  var textHeight = parseInt(CTX.font)
+  var textHeight = parseInt(ctx.font)
   nRotate = nRotate || 0
   ctx.beginPath()
   ctx.moveTo(0, 0)
