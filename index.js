@@ -1,7 +1,6 @@
-var Canvas    = require('canvas-browserify')
-var ruler     = require('./ruler')
-var labels    = require('./labels')
-
+var ruler  = require('./ruler')
+var labels = require('./labels')
+var Color  = require('color')
 //Tau is much easier to visualize.
 //rotating one quarter is Tau/4, etc
 var TAU = 2*Math.PI
@@ -21,8 +20,8 @@ function nColours (N, sat, light) {
   sat = sat || 100; light = light || 50
   var a = []
   for(var i = 0; i < N; i++) {
-    console.log(i, 360/N)
-    a.push('hsl('+ (i*(360/N)) + ', ' + sat + '%, ' + light +'%)')
+    //convert to rgb because node-canvas doesn't support hsl
+    a.push(Color('hsl('+ (i*(360/N)) + ', ' + sat + '%, ' + light +'%)').rgbString())
   }
   return a
 }
@@ -40,6 +39,8 @@ var graph = module.exports = function (ctx, table, opts) {
   //calculate margin from font height
   var textHeight = parseInt(ctx.font)
   var margin = textHeight * 3
+
+  console.error('colours', colours)
 
   var scales = {}, axis = []
 
@@ -149,25 +150,4 @@ var graph = module.exports = function (ctx, table, opts) {
 
   ctx.fillStyle = 'black'
   ctx.fillText(opts.title || "Graph o'Data", width/2, textHeight * 2)
-  
-  return canvas
 }
-
-if(process.title === 'browser') {
-  var createTable = require('dat-table').createTable
-
-  var canvas = CANVAS = Canvas()
-  canvas.width = 1000
-  canvas.height = 600
-  var ctx = CTX = canvas.getContext('2d')
-  graph(ctx, createTable(require('./test/fib.json')), {title: 'fib generators'})
-  document.body.appendChild(canvas)
-
-  var canvas = CANVAS = Canvas()
-  canvas.width = 1000
-  canvas.height = 600
-  var ctx = canvas.getContext('2d')
-  graph(ctx, createTable(require('./test/merkle.json')), {title: 'Time to build a merkle tree'})
-  document.body.appendChild(canvas)
-}
-
