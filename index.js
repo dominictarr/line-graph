@@ -1,16 +1,10 @@
 var Canvas    = require('canvas-browserify')
-var Vec2      = require('vec2')
-var vecCanvas = require('./vec2-canvas')
 var ruler     = require('./ruler')
 var labels    = require('./labels')
 
 //Tau is much easier to visualize.
 //rotating one quarter is Tau/4, etc
 var TAU = 2*Math.PI
-
-function v (x, y) {
-  return new Vec2(x, y)
-}
 
 function find (ary, test) {
   for(var i in ary)
@@ -80,8 +74,6 @@ var graph = module.exports = function (ctx, table, opts) {
   var stat = stats[0]
   var xScale = (width - margin*2) / (stat.max - stat.min)
   var xMin = stat.min
-
-  var draw = vecCanvas(ctx)
 
   var j = 0
   axis.forEach(function (scale, i) {
@@ -155,9 +147,8 @@ var graph = module.exports = function (ctx, table, opts) {
     ctx.stroke()
   })
 
-  draw
-    .fillStyle('black')
-    .text(opts.title || "Graph o'Data", {x: width/2, y: textHeight * 2})
+  ctx.fillStyle = 'black'
+  ctx.fillText(opts.title || "Graph o'Data", width/2, textHeight * 2)
   
   return canvas
 }
@@ -179,3 +170,4 @@ if(process.title === 'browser') {
   graph(ctx, createTable(require('./test/merkle.json')), {title: 'Time to build a merkle tree'})
   document.body.appendChild(canvas)
 }
+

@@ -1,11 +1,9 @@
 module.exports = ruler
-var vec2Draw = require('./vec2-canvas')
-//must have range, room, and
 
+//must have range, room, and width
 function calcSteps (min, max, room, width) {
   var range = max - min
   var i = 0, e
-  console.log('mMrw', min, max, room, width)
   while(true) {
     var e = Math.pow(10, i++)
     if(e > 10000000000)
@@ -23,19 +21,17 @@ draw everything straight up and starting from zero.
 then translate/rotate to that point before you draw it.
 
 you just have to remember to pop the state again...
-it would be interesting if you could create independent drawing contexts,
-but you can't...
+maybe it would be interesting if you could create independent drawing contexts,
+but actually this is working pretty well.
 */
 
 function ruler (ctx, length, nRotate, min, max) {
   var textHeight = parseInt(CTX.font)
-  var draw = vec2Draw(ctx)
   nRotate = nRotate || 0
-  draw
-    .start()
-    .move({x:0, y:0})
-    .line({x:length, y:0})
-    .stroke()
+  ctx.beginPath()
+  ctx.moveTo(0, 0)
+  ctx.lineTo(length, 0)
+  ctx.stroke()
 
   var i = 0
   var range = max - min
@@ -44,15 +40,14 @@ function ruler (ctx, length, nRotate, min, max) {
   for(var i = 0; i < range/step; i++) {
     if(i > 1000) throw new Error('too many markings'+JSON.stringify([range, step, i]))
     ctx.save()
-    ctx.translate(i*step*scale, 0)
-    if(nRotate)
-      ctx.rotate(nRotate)
-    draw
-      .move({x:0, y:0})
-      .line({x:0, y:textHeight/2})
-      .textAlign('center')
-      .text(i*step, {x:0, y: textHeight * 1.5})
-      .stroke()
+      ctx.translate(i*step*scale, 0)
+      if(nRotate)
+        ctx.rotate(nRotate)
+      ctx.moveTo(0, 0)
+      ctx.lineTo(0, textHeight/2)
+      ctx.textAlign = 'center'
+      ctx.fillText(i*step, 0, textHeight * 1.5)
+      ctx.stroke()
     ctx.restore()
   }
 }
