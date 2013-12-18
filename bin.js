@@ -1,3 +1,4 @@
+#! /usr/bin/env node
 var opts = require('optimist').argv
 var Canvas = require('canvas')
 var graph = require('./')
