@@ -1,7 +1,7 @@
 {
   "name": "line-graph",
   "description": "very simple line-graph",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "homepage": "https://github.com/dominictarr/autograph",
   "repository": {
     "type": "git",
@@ -17,7 +17,7 @@
     "test": "set -e; for t in test/*.js; do node $t; done"
   },
   "optionalDependenies": {
-    "canvas": "1.1.2",
+    "canvas": "1.1.2"
   },
   "bin": "./bin.js",
   "author": "Dominic Tarr <dominic.tarr@gmail.com> (dominictarr.com)",
