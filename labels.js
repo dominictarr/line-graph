@@ -5,14 +5,40 @@ function v (x, y) {
   return new Vec2(x, y)
 }
 
+function labels (ctx, stats) {
+  var across = 0
+  var textHeight = parseInt(ctx.font)
+  for(var i in stats) {
+    var stat = stats[i]
+    ctx.fillText(stat.title, across, 0)
+    var width = ctx.measureText(stat.title).width
+    ctx.beginPath()
+    ctx.moveTo(across+=textHeight+width, 0)
+    ctx.strokeStyle = stat.color
+    ctx.lineTo(across+=(textHeight*2), 0)
+    ctx.stroke()
+    across+= textHeight
+  }
+  return across
+}
+
 module.exports =
   function drawLabels (ctx, scale, stats, side) {
-    var draw = vec2Draw(ctx)
     var opts = side || scale.side
-    var min = opts.min, max = opts.max, align = opts.align
+    ctx.save()
+    
+    var textHeight = parseInt(ctx.font)
+    ctx.translate(opts.min.x, opts.min.y + textHeight * 2.5)
     var onSide = stats.filter(function (stat) {
       return stat.units === scale.units
     })
+    labels(ctx, onSide)
+    ctx.restore()
+    return
+    /*
+    var draw = vec2Draw(ctx)
+    var opts = side || scale.side
+    var min = opts.min, max = opts.max, align = opts.align
     var textHeight = parseInt(ctx.font)
     var length = 0
     var labels = onSide.map(function (e) {
@@ -54,7 +80,7 @@ module.exports =
 
       //into position for next label
     })
-
+    */
     //draw.text('('+scale.units+')', start, {rotate: !!align.x})
   }
 
