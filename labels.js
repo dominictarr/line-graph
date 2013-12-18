@@ -1,7 +1,13 @@
 var vec2Draw = require('./vec2-canvas')
+var Vec2 = require('vec2')
+
+function v (x, y) {
+  return new Vec2(x, y)
+}
 
 module.exports =
   function drawLabels (ctx, scale, stats, side) {
+    var draw = vec2Draw(ctx)
     var opts = side || scale.side
     var min = opts.min, max = opts.max, align = opts.align
     var onSide = stats.filter(function (stat) {

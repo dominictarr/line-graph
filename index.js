@@ -2,6 +2,9 @@ var Canvas    = require('canvas-browserify')
 var Vec2      = require('vec2')
 var vecCanvas = require('./vec2-canvas')
 var drawScale     = require('./scale')
+var ruler     = require('./ruler')
+var drawLabels    = require('./labels')
+var TAU = 2*Math.PI
 
 function v (x, y) {
   return new Vec2(x, y)
@@ -34,7 +37,6 @@ var graph = module.exports = function (canvas, table, opts) {
   table.sort()
 
   var colours = nColours(table.width() - 1, 100, 50)
-  //['black', 'red', 'blue', 'green', 'yellow', 'orange', 'purple']
 
   var stats = table.stats()
   //calculate margin from font height
@@ -83,57 +85,6 @@ var graph = module.exports = function (canvas, table, opts) {
   //drawing the actual graph is the easy bit.
   //but it's the scales that make it useful.
 
-  function drawLabels (scale, side) {
-    var opts = side || scale.side
-    var min = opts.min, max = opts.max, align = opts.align
-    var onSide = stats.filter(function (stat) {
-      return stat.units === scale.units
-    })
-
-    var length = 0
-    var labels = onSide.map(function (e) {
-      var label = e.title
-      length += ctx.measureText(label).width + 15
-      return label
-    })
-
-    length += (onSide.length )*5 + ctx.measureText('('+scale.units+')').width
-
-    var dir = v(max).subtract(min).normalize()
-    var center =
-      v(min).add(max).divide(2)
-      .add(v(align).multiply((align.x > 0 ? textHeight*2 : textHeight*2.5)))
-
-    var start = v(min)
-      .add(v(align).multiply((align.x > 0 ? textHeight*2 : textHeight*2.5)))
-
-    var space = v(dir).multiply(textHeight)
-    var line  = v(dir).multiply(textHeight*2)
-    
-    draw.textAlign('left')
-
-    labels.forEach(function (label, i) {
-      var length = ctx.measureText(label).width
-      console.log('label', label, onSide[i].colour, start)
-
-      draw
-        .text(label, start, {rotate: !!align.x})
-  
-      draw
-        .start()
-        .strokeStyle(onSide[i].colour)
-        .move(start.add(v(dir).multiply(length)).add(space))
-        .line(start.add(line))
-        .stroke()
-
-      start.add(space)
-
-      //into position for next label
-    })
-
-    //draw.text('('+scale.units+')', start, {rotate: !!align.x})
-  }
-
   var sides = [
     //bottom
     { min   : v(margin, canvas.height - margin),
@@ -154,10 +105,24 @@ var graph = module.exports = function (canvas, table, opts) {
 
   axis.forEach(function (scale, i) {
     scale.side = sides[i]
-    drawScale(canvas.getContext('2d'), scale)
+//    drawScale(canvas.getContext('2d'), scale)
+    ctx.save()
+    //bottom or left axis stat at bottom left
+    if(i <= 1)
+      ctx.translate(margin, canvas.height - margin)
+    //3rd axis starts at bottom right
+    else
+      ctx.translate(canvas.width - margin, canvas.height - margin)
+
+    console.log(i, TAU*-0.25)
+    if(i)
+      ctx.rotate(TAU*-0.25)
+
+    ruler(ctx, (i ? canvas.height : canvas.width) - margin*2, i==1 ? TAU/2 : 0, scale.min, scale.max)
+    ctx.restore()
   })
 
-  drawLabels(axis[1], sides[0])
+  drawLabels(ctx, axis[1], stats, sides[0])
 
   stats.forEach(function (stat, col) {
     if(!col) return
