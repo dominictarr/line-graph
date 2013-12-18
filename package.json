@@ -16,7 +16,7 @@
   "scripts": {
     "test": "set -e; for t in test/*.js; do node $t; done"
   },
-  "optionalDependenies": {
+  "optionalDependencies": {
     "canvas": "1.1.2"
   },
   "bin": "./bin.js",
