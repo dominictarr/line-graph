@@ -9,7 +9,12 @@
 var process=require("__browserify_process");var Canvas    = require('canvas-browserify')
 var Vec2      = require('vec2')
 var vecCanvas = require('./vec2-canvas')
-var drawScale     = require('./scale')
+var ruler     = require('./ruler')
+var labels    = require('./labels')
+
+//Tau is much easier to visualize.
+//rotating one quarter is Tau/4, etc
+var TAU = 2*Math.PI
 
 function v (x, y) {
   return new Vec2(x, y)
@@ -36,17 +41,18 @@ function nColours (N, sat, light) {
   return a
 }
 
-var graph = module.exports = function (canvas, table, opts) {
-  var ctx = canvas.getContext('2d')
+var graph = module.exports = function (ctx, table, opts) {
   opts = opts || {}
+  var width = opts.width || ctx.canvas.width
+  var height = opts.height || ctx.canvas.height
+
   table.sort()
 
   var colours = nColours(table.width() - 1, 100, 50)
-  //['black', 'red', 'blue', 'green', 'yellow', 'orange', 'purple']
 
   var stats = table.stats()
   //calculate margin from font height
-  var textHeight = parseInt(CTX.font)
+  var textHeight = parseInt(ctx.font)
   var margin = textHeight * 3
 
   var scales = {}, axis = []
@@ -80,99 +86,70 @@ var graph = module.exports = function (canvas, table, opts) {
     axis.push(scales[u])
 
   var stat = stats[0]
-  var xScale = (canvas.width - margin*2) / (stat.max - stat.min)
+  var xScale = (width - margin*2) / (stat.max - stat.min)
   var xMin = stat.min
 
   var draw = vecCanvas(ctx)
 
   var j = 0
-
-  //draw scale on the sides of the graph
-  //drawing the actual graph is the easy bit.
-  //but it's the scales that make it useful.
-
-  function drawLabels (scale, side) {
-    var opts = side || scale.side
-    var min = opts.min, max = opts.max, align = opts.align
-    var onSide = stats.filter(function (stat) {
-      return stat.units === scale.units
-    })
-
-    var length = 0
-    var labels = onSide.map(function (e) {
-      var label = e.title
-      length += ctx.measureText(label).width + 15
-      return label
-    })
-
-    length += (onSide.length )*5 + ctx.measureText('('+scale.units+')').width
-
-    var dir = v(max).subtract(min).normalize()
-    var center =
-      v(min).add(max).divide(2)
-      .add(v(align).multiply((align.x > 0 ? textHeight*2 : textHeight*2.5)))
-
-    var start = v(min)
-      .add(v(align).multiply((align.x > 0 ? textHeight*2 : textHeight*2.5)))
-
-    var space = v(dir).multiply(textHeight)
-    var line  = v(dir).multiply(textHeight*2)
-    
-    draw.textAlign('left')
-
-    labels.forEach(function (label, i) {
-      var length = ctx.measureText(label).width
-      console.log('label', label, onSide[i].colour, start)
-
-      draw
-        .text(label, start, {rotate: !!align.x})
-  
-      draw
-        .start()
-        .strokeStyle(onSide[i].colour)
-        .move(start.add(v(dir).multiply(length)).add(space))
-        .line(start.add(line))
-        .stroke()
-
-      start.add(space)
-
-      //into position for next label
-    })
-
-    //draw.text('('+scale.units+')', start, {rotate: !!align.x})
-  }
-
-  var sides = [
-    //bottom
-    { min   : v(margin, canvas.height - margin),
-      max   : v(canvas.width - margin, canvas.height - margin),
-      align : v(0, 1)
-    },
-    //left
-    { min   : v(margin, canvas.height - margin),
-      max   : v(margin, margin),
-      align : v(-1, 0)
-    },
-    //right
-    { min   : v(canvas.width - margin, canvas.height - margin),
-      max   : v(canvas.width - margin, margin),
-      align : v(1, 0)
-    }
-  ]
-
   axis.forEach(function (scale, i) {
-    scale.side = sides[i]
-    drawScale(canvas.getContext('2d'), scale)
+    ctx.save()
+      
+      if(i <= 1) //bottom & left axis stat at bottom left
+        ctx.translate(margin, height - margin)
+
+      else //3rd axis starts at bottom right
+        ctx.translate(width - margin, height - margin)
+
+      if(i) ctx.rotate(TAU*-0.25)
+
+      ruler(ctx,
+        //length of side or bottom
+        (i ? height : width) - margin*2,
+        //flip labels on left side.
+        i==1 ? TAU/2 : 0,
+        scale.min,
+        scale.max
+      )
+    ctx.restore()
   })
 
-  drawLabels(axis[1], sides[0])
+  function getLabels(scale) {
+    return stats.filter(function (stat) {
+      if(!stat) return
+      return stat.units === scale.units
+    })
+  }
+
+  //two axis graph, draw lables on the bottom.
+  if(axis.length == 2) {
+    ctx.save()
+      ctx.translate(margin, (height - margin) + (textHeight * 2.5))
+      labels(ctx, getLabels(axis[1]))
+    ctx.restore()
+  }
+
+  //three axis graph lables on the sides
+  else if(axis.length == 3) {
+    ctx.save()
+      ctx.translate(margin - (textHeight * 2.5), margin)
+      ctx.rotate(TAU*0.25)
+      labels(ctx, getLabels(axis[1]))
+    ctx.restore()
+
+    ctx.save()
+      ctx.translate((width - margin) + (textHeight * 2), margin)
+      ctx.rotate(TAU*0.25)
+      labels(ctx, getLabels(axis[2]))
+    ctx.restore()
+  }
 
   stats.forEach(function (stat, col) {
-    if(!col) return
+    if(!col || !stat) return
     var scale = scales[stat.units]
 
     if(!stat) return
-    var yScale = (canvas.height - margin*2)/(scale.max - scale.min)
+    var yScale = (height - margin*2)/(scale.max - scale.min)
     var _x = 0, _y = 0
     ctx.beginPath()
     ctx.strokeStyle = stat.color
@@ -181,29 +158,57 @@ var graph = module.exports = function (canvas, table, opts) {
       if(isNaN(value)) return
       var y = margin + (value - stat.min)*yScale
       var x = margin + (row[0] - xMin)*xScale
-      ;(n ? ctx.lineTo : ctx.moveTo).call(ctx, x, canvas.height - y)
+      ;(n ? ctx.lineTo : ctx.moveTo).call(ctx, x, height - y)
     })
     ctx.stroke()
   })
 
   draw
     .fillStyle('black')
-    .text(opts.title || "Graph o'Data", {x: canvas.width/2, y: textHeight * 2})
+    .text(opts.title || "Graph o'Data", {x: width/2, y: textHeight * 2})
   
   return canvas
 }
 
 if(process.title === 'browser') {
+  var createTable = require('dat-table').createTable
+
   var canvas = CANVAS = Canvas()
   canvas.width = 1000
   canvas.height = 600
   var ctx = CTX = canvas.getContext('2d')
-  var createTable = require('dat-table').createTable
-  graph(canvas, createTable(require('./test/fib.json')), {title: 'fib generators'})
+  graph(ctx, createTable(require('./test/fib.json')), {title: 'fib generators'})
+  document.body.appendChild(canvas)
+
+  var canvas = CANVAS = Canvas()
+  canvas.width = 1000
+  canvas.height = 600
+  var ctx = canvas.getContext('2d')
+  graph(ctx, createTable(require('./test/merkle.json')), {title: 'Time to build a merkle tree'})
   document.body.appendChild(canvas)
 }
 
-},{"./scale":7,"./test/fib.json":8,"./vec2-canvas":9,"__browserify_process":10,"canvas-browserify":2,"dat-table":4,"vec2":6}],2:[function(require,module,exports){
+},{"./labels":2,"./ruler":8,"./test/fib.json":9,"./test/merkle.json":10,"./vec2-canvas":11,"__browserify_process":12,"canvas-browserify":3,"dat-table":5,"vec2":7}],2:[function(require,module,exports){
+module.exports =
+function labels (ctx, stats) {
+  var across = 0
+  var textHeight = parseInt(ctx.font)
+  for(var i in stats) {
+    var stat = stats[i]
+    ctx.fillText(stat.title, across, 0)
+    var width = ctx.measureText(stat.title).width
+    ctx.beginPath()
+    ctx.moveTo(across+=textHeight+width, 0)
+    ctx.strokeStyle = stat.color
+    ctx.lineTo(across+=(textHeight*2), 0)
+    ctx.stroke()
+    across+= textHeight
+  }
+  return across
+}
+
+
+},{}],3:[function(require,module,exports){
 
 var Canvas = module.exports = function Canvas (w, h) {
   var canvas = document.createElement('canvas')
@@ -220,7 +225,7 @@ Canvas.Image = function () {
 
 
 
-},{}],3:[function(require,module,exports){
+},{}],4:[function(require,module,exports){
 var _spaces = '                                       ';
 
 function isNumber (n) {
@@ -323,7 +328,7 @@ module.exports = function (array) {
 
 }
 
-},{}],4:[function(require,module,exports){
+},{}],5:[function(require,module,exports){
 module.exports = Table
 var format = require('./format')
 
@@ -510,7 +515,7 @@ function Column (table, header, i) {
 }
 
 
-},{"./format":3,"./stats":5}],5:[function(require,module,exports){
+},{"./format":4,"./stats":6}],6:[function(require,module,exports){
 
 
 function isNumber (n) {
@@ -559,7 +564,7 @@ exports.count = function (c, e) {
 }
 
 
-},{}],6:[function(require,module,exports){
+},{}],7:[function(require,module,exports){
 ;(function inject(clean, precision, undef) {
 
   function Vec2(x, y) {
@@ -950,16 +955,10 @@ exports.count = function (c, e) {
 
 
 
-},{}],7:[function(require,module,exports){
+},{}],8:[function(require,module,exports){
+module.exports = ruler
 var vec2Draw = require('./vec2-canvas')
-var Vec2 = require('vec2')
-
-function v (x, y) {
-  return new Vec2(x, y)
-}
-
-module.exports = drawScale
-drawScale.steps = steps
+//must have range, room, and
 
 function calcSteps (min, max, room, width) {
   var range = max - min
@@ -975,14 +974,6 @@ function calcSteps (min, max, room, width) {
   }
 }
 
-//must have range, room, and
-function steps (min, max, opts, each) {
-  var range = max - min
-  var step = calcSteps(min, max, opts.room, opts.width)
-  for(var i = 0; i*step < range; i++) {
-    each(i*step)
-  }
-}
 
 /*
 A WWAAAAYYY easier approach.
@@ -1008,7 +999,8 @@ function ruler (ctx, length, nRotate, min, max) {
   var range = max - min
   var scale = length/range
   var step = calcSteps(min, max, length, ctx.measureText(max).width)
-  for(var i = 0; i < range*step; i++) {
+  for(var i = 0; i < range/step; i++) {
+    if(i > 1000) throw new Error('too many markings'+JSON.stringify([range, step, i]))
     ctx.save()
     ctx.translate(i*step*scale, 0)
     if(nRotate)
@@ -1022,86 +1014,9 @@ function ruler (ctx, length, nRotate, min, max) {
     ctx.restore()
   }
 }
-var T = 0
-function drawScale (ctx, scale, opts) {
-//  if(T++) return
-//  ctx.save()
-//  ctx.translate(Math.round(scale.side.min.x), Math.round(scale.side.min.y))
-//  ruler(ctx,
-//    v(scale.side.min).subtract(scale.side.max).length(), 
-//    0, scale.min, scale.max)
-//  ctx.restore()
-//
-//  ctx.save()
-//  ctx.translate(Math.round(scale.side.min.x), Math.round(scale.side.min.y))
-//  ctx.rotate(Math.PI*-0.5)
-//  ruler(ctx, v(scale.side.min).subtract(scale.side.max).length(), Math.PI, scale.min, scale.max)
-//  ctx.restore()
-
-//  return //
-  var draw = vec2Draw(ctx)
-  opts = opts || {}
-  var textHeight = parseInt(CTX.font)
-  var side = scale.side || opts.side
-  var log = opts.log
-
-  function toScale (value) {
-    return log ? Math.pow(Math.E, value) : value
-  }
-
-  function round (n) {
-    return parseFloat(toScale(n).toPrecision(opts.precision || 3))
-  }
-
-  var min = side.min, max = side.max, align = side.align
-  draw.strokeStyle('black').fillStyle('black').start().move(min).line(max)  
-
-  var textWidth = ctx.measureText(round(scale.max)).width
-  var textSize = align.x ? textHeight : textWidth
-
-  var room   = v(max).subtract(min).length()
-  var vec    = v(max).subtract(min).normalize()
-  var offset = v(align).multiply((align.x > 0 ? textHeight : textHeight*1.5))
-  var dash   = v(align).multiply(5)
-  var markV  = v()
-  var textV = v()
-
-  //how many marks can fit on the graph?
-  //if it's linear, that is simple
-  //if it's logarithmic, that is a little more complex.
-  //for now, we only support powers of 10 on the scale.
-  var xScale = room/(scale.max - scale.min)
-  //figure out step size for linear axis
-
-  steps(scale.min, scale.max, {room:room, width:textWidth}, function (value) {
-    markV.set(vec).multiply(value*xScale).add(min)
-    draw
-      .textAlign('center')
-      .text(
-        round(scale.min + value),
-        textV.set(markV).add(offset),
-        {rotate: !!align.x} //90 degrees
-      )
-      .move(markV)
-      .line(markV.add(dash))
-  })
-
-  //maybe this should be completely separate?
-
-  var label = (scale.title || '') + (scale.units ? ' (' + scale.units + ')' : '')
-  if(label) {
-    draw.text(
-      label,
-      v(min).add(max).divide(2).add(v(align).multiply((align.x > 0 ? textHeight*2 : textHeight*2.5))),
-      {rotate: !!align.x}
-    )
-  }
-
-  draw.stroke()
-}
 
 
-},{"./vec2-canvas":9,"vec2":6}],8:[function(require,module,exports){
+},{"./vec2-canvas":11}],9:[function(require,module,exports){
 module.exports=[
   [
     {
@@ -1407,7 +1322,155 @@ module.exports=[
   ]
 ]
 
-},{}],9:[function(require,module,exports){
+},{}],10:[function(require,module,exports){
+module.exports=[
+  [
+    { "name": "Items", "units": "N"},
+    { "name": "Time", "units": "ms"},
+    { "name": "Items/Millisecond", "units": "N/ms"},
+    { "name": "hash"}
+  ],
+  [
+    1001,
+    3,
+    333.6666666666667,
+    "5b693c94fb68e8e9d33171245ba8e98bfdc8474f"
+  ],
+  [
+    1415,
+    2,
+    707.5,
+    "cdc368dbb4e7ef9ee44b72867df3a42a7ea0191e"
+  ],
+  [
+    2001,
+    1,
+    2001,
+    "e2bdd981b7d27f3ef91ad9bf8e45c37e3db78858"
+  ],
+  [
+    2829,
+    3,
+    943,
+    "11a3c509f996213011f1b3c61471f8897d59c480"
+  ],
+  [
+    4001,
+    5,
+    800.2,
+    "4b2be72308d104ee7a97e247dc7a176fb7d72737"
+  ],
+  [
+    5657,
+    6,
+    942.8333333333334,
+    "213d4cd1069296446c07d3bb67d05503db98b1a4"
+  ],
+  [
+    8001,
+    14,
+    571.5,
+    "8f822d812a205e1a224afc270816515ba99b0404"
+  ],
+  [
+    11314,
+    12,
+    942.8333333333334,
+    "8bbc9cdad89ec771a8d6a485ee7232f6f32a1685"
+  ],
+  [
+    16001,
+    25,
+    640.04,
+    "a68d1af1c46a8798b47ef22c2566cb5fbef7a284"
+  ],
+  [
+    22628,
+    48,
+    471.4166666666667,
+    "f2a9d79880b9c8d9b11810d9d17d9ac6a1fbe0c0"
+  ],
+  [
+    32001,
+    37,
+    864.8918918918919,
+    "95ea6835e42d32d29ddadf7d72838817205979b0"
+  ],
+  [
+    45255,
+    84,
+    538.75,
+    "67f7775acd85cc286d46eeb6bdd71e6e34248705"
+  ],
+  [
+    64001,
+    79,
+    810.1392405063291,
+    "2bbd7e34010e98128b7a47a91c07174e00a49983"
+  ],
+  [
+    90510,
+    182,
+    497.3076923076923,
+    "71afa2b69451e797422a67634f41554dab16aef4"
+  ],
+  [
+    128001,
+    185,
+    691.8972972972973,
+    "693c507aa905485c9fe9f3d3e31bd7d7411b06af"
+  ],
+  [
+    181020,
+    364,
+    497.3076923076923,
+    "d7d69d895f2ad13e7f9891ab15ce6ce53c66374a"
+  ],
+  [
+    256001,
+    658,
+    389.05927051671733,
+    "7622188f0ed0a0afd1203f57b28c8b5ab4e72f13"
+  ],
+  [
+    362039,
+    579,
+    625.2832469775475,
+    "46b35639b20cb4ec87d36c3c3bd1e88166c3bfb8"
+  ],
+  [
+    512001,
+    1349,
+    379.54114158636025,
+    "da8d0a71b352188b3ca207de5022708825830f9f"
+  ],
+  [
+    724078,
+    1276,
+    567.4592476489029,
+    "cb33bdb46c9818ea4a415392e5a1eef4450c9f53"
+  ],
+  [
+    1024001,
+    2771,
+    369.54204258390473,
+    "4a2150d09a86528ae6108fa16f7d262d18b60e48"
+  ],
+  [
+    1448155,
+    4637,
+    312.304291567824,
+    "c4b9ea7c70248624326f76212688d13666975b1f"
+  ],
+  [
+    2048001,
+    9284,
+    220.5946790176648,
+    "40b6caae1d38b7d7be6cc4f866aecd93368ddbfe"
+  ]
+]
+
+},{}],11:[function(require,module,exports){
 function r (v) {
   return Math.round(v)
 }
@@ -1455,7 +1518,7 @@ module.exports =
   }
 
 
-},{}],10:[function(require,module,exports){
+},{}],12:[function(require,module,exports){
 // shim for using process in browser
 
 var process = module.exports = {};
