@@ -9,6 +9,7 @@
 var process=require("__browserify_process");var Canvas    = require('canvas-browserify')
 var Vec2      = require('vec2')
 var vecCanvas = require('./vec2-canvas')
+var drawScale     = require('./scale')
 
 function v (x, y) {
   return new Vec2(x, y)
@@ -25,18 +26,23 @@ now, we can only support 2 scales, maximum.
 (to be drawn on the left and the right side)
 */
 
-var graph = module.exports = function (table, opts) {
-  opts = opts || {}
-  var canvas = CANVAS = Canvas()
-  canvas.width = opts.width || 300
-  canvas.height = opts.height || 150
-  var ctx = CTX = canvas.getContext('2d')
+function nColours (N, sat, light) {
+  sat = sat || 100; light = light || 50
+  var a = []
+  for(var i = 0; i < N; i++) {
+    console.log(i, 360/N)
+    a.push('hsl('+ (i*(360/N)) + ', ' + sat + '%, ' + light +'%)')
+  }
+  return a
+}
 
+var graph = module.exports = function (canvas, table, opts) {
+  var ctx = canvas.getContext('2d')
+  opts = opts || {}
   table.sort()
 
-  var colours = ['black', 'red', 'blue', 'green', 'yellow', 'orange', 'purple']
-
-  //this will be synchronous, because table is an array.
+  var colours = nColours(table.width() - 1, 100, 50)
+  //['black', 'red', 'blue', 'green', 'yellow', 'orange', 'purple']
 
   var stats = table.stats()
   //calculate margin from font height
@@ -56,9 +62,7 @@ var graph = module.exports = function (table, opts) {
     stat.title = table.header(i).name
     stat.units = table.header(i).units
     stat.color =
-    stat.colour = ctx.strokeStyle = colours[i]
-
-    console.log(table.header(i))
+    stat.colour = colours[i - 1]
 
     if(i !== 0) {
       var scale = scales[stat.units] || {}
@@ -68,7 +72,6 @@ var graph = module.exports = function (table, opts) {
       scale.range = scale.max - scale.min
       scales[scale.units] = scale
     }
-
   })
 
   axis[0] = stats[0]
@@ -80,89 +83,13 @@ var graph = module.exports = function (table, opts) {
   var xScale = (canvas.width - margin*2) / (stat.max - stat.min)
   var xMin = stat.min
 
-  function round (n) {
-    return parseFloat(n.toPrecision(opts.precision || 3))
-  }
-
-  console.log('scales', axis, scales)
-
-  var draw =
-    vecCanvas(ctx)
+  var draw = vecCanvas(ctx)
 
   var j = 0
 
   //draw scale on the sides of the graph
   //drawing the actual graph is the easy bit.
   //but it's the scales that make it useful.
-  function drawScale (scale, log) {
-    var opts = scale.side
-    var min = opts.min, max = opts.max, align = opts.align
-    draw.strokeStyle('black').fillStyle('black').start().move(min).line(max)
-    
-    function toScale (value) {
-      return log ? Math.pow(Math.E, value) : value
-    }
-
-    var textWidth = ctx.measureText(round(toScale(stat.max))).width
-    var textSize = align.x ? textHeight : textWidth
-
-    var room   = v(max).subtract(min).length()
-    var vec    = v(max).subtract(min).normalize()
-    var offset = v(align).multiply((align.x > 0 ? textHeight : textHeight*1.5))
-    var dash   = v(align).multiply(5)
-
-    //how many marks can fit on the graph?
-    //if it's linear, that is simple
-    //if it's logarithmic, that is a little more complex.
-    //for now, we only support powers of 10 on the scale.
-    var xScale = room/(scale.max - scale.min)
-    //figure out step size for linear axis
-    var _step = !log ? (function () {
-      var i = 0, e
-      while(true) {
-        var e = Math.pow(10, i++)
-        if(room   / (scale.range / e) > textWidth*3) return e
-        if(room*2 / (scale.range / e) > textWidth*3) return e*2
-        if(room*5 / (scale.range / e) > textWidth*3) return e*5
-      }
-    })() : 1
-
-    function step (i) {
-      return !log ? _step * i 
-      : (Math.log(Math.pow(Math.E, round(stat.min)) * Math.pow(Math.pow(10, 1), i)) - scale.min)
-    }
-
-    var marks = Math.floor(scale.range/_step)
-
-    var markV = v(), textV = v()
-    for(var i = 0; i <= marks; i++) {
-      var value = step(i)
-      markV.set(vec).multiply(value*xScale).add(min)
-
-      draw
-        .textAlign('center')
-        .text(
-          round(toScale(scale.min + value)),
-          textV.set(markV).add(offset),
-          {rotate: !!align.x} //90 degrees
-        )
-        .move(markV)
-        .line(markV.add(dash))
-    }
-
-    //move this to after drawing the graphs...
-
-    var label = (scale.title || '') + (scale.units ? ' (' + scale.units + ')' : '')
-    if(label) {
-      draw.text(
-        label,
-        v(min).add(max).divide(2).add(v(align).multiply((align.x > 0 ? textHeight*2 : textHeight*2.5))),
-        {rotate: !!align.x}
-      )
-    }
-
-    draw.stroke()
-  }
 
   function drawLabels (scale, side) {
     var opts = side || scale.side
@@ -180,7 +107,7 @@ var graph = module.exports = function (table, opts) {
 
     length += (onSide.length )*5 + ctx.measureText('('+scale.units+')').width
 
-    var dir = v(max).subtract(min).normalize()//.multiply(-1)
+    var dir = v(max).subtract(min).normalize()
     var center =
       v(min).add(max).divide(2)
       .add(v(align).multiply((align.x > 0 ? textHeight*2 : textHeight*2.5)))
@@ -188,7 +115,6 @@ var graph = module.exports = function (table, opts) {
     var start = v(min)
       .add(v(align).multiply((align.x > 0 ? textHeight*2 : textHeight*2.5)))
 
-    //v(center).subtract(v(dir).multiply(length/2))
     var space = v(dir).multiply(textHeight)
     var line  = v(dir).multiply(textHeight*2)
     
@@ -236,7 +162,7 @@ var graph = module.exports = function (table, opts) {
 
   axis.forEach(function (scale, i) {
     scale.side = sides[i]
-    drawScale(scale)
+    drawScale(canvas.getContext('2d'), scale)
   })
 
   drawLabels(axis[1], sides[0])
@@ -268,14 +194,16 @@ var graph = module.exports = function (table, opts) {
 }
 
 if(process.title === 'browser') {
+  var canvas = CANVAS = Canvas()
+  canvas.width = 1000
+  canvas.height = 600
+  var ctx = CTX = canvas.getContext('2d')
   var createTable = require('dat-table').createTable
-  document.body.appendChild(
-    graph(createTable(require('./test/fib.json')), {width: 1000, height:600, title: 'fib generators'})
-  )
+  graph(canvas, createTable(require('./test/fib.json')), {title: 'fib generators'})
+  document.body.appendChild(canvas)
 }
 
-
-},{"./test/fib.json":7,"./vec2-canvas":8,"__browserify_process":9,"canvas-browserify":2,"dat-table":4,"vec2":6}],2:[function(require,module,exports){
+},{"./scale":7,"./test/fib.json":8,"./vec2-canvas":9,"__browserify_process":10,"canvas-browserify":2,"dat-table":4,"vec2":6}],2:[function(require,module,exports){
 
 var Canvas = module.exports = function Canvas (w, h) {
   var canvas = document.createElement('canvas')
@@ -1023,6 +951,157 @@ exports.count = function (c, e) {
 
 
 },{}],7:[function(require,module,exports){
+var vec2Draw = require('./vec2-canvas')
+var Vec2 = require('vec2')
+
+function v (x, y) {
+  return new Vec2(x, y)
+}
+
+module.exports = drawScale
+drawScale.steps = steps
+
+function calcSteps (min, max, room, width) {
+  var range = max - min
+  var i = 0, e
+  console.log('mMrw', min, max, room, width)
+  while(true) {
+    var e = Math.pow(10, i++)
+    if(e > 10000000000)
+      throw new Error('oops')
+    if(room   / (range / e) > width*3) return e
+    if(room*2 / (range / e) > width*3) return e*2
+    if(room*5 / (range / e) > width*3) return e*5
+  }
+}
+
+//must have range, room, and
+function steps (min, max, opts, each) {
+  var range = max - min
+  var step = calcSteps(min, max, opts.room, opts.width)
+  for(var i = 0; i*step < range; i++) {
+    each(i*step)
+  }
+}
+
+/*
+A WWAAAAYYY easier approach.
+draw everything straight up and starting from zero.
+then translate/rotate to that point before you draw it.
+
+you just have to remember to pop the state again...
+it would be interesting if you could create independent drawing contexts,
+but you can't...
+*/
+
+function ruler (ctx, length, nRotate, min, max) {
+  var textHeight = parseInt(CTX.font)
+  var draw = vec2Draw(ctx)
+  nRotate = nRotate || 0
+  draw
+    .start()
+    .move({x:0, y:0})
+    .line({x:length, y:0})
+    .stroke()
+
+  var i = 0
+  var range = max - min
+  var scale = length/range
+  var step = calcSteps(min, max, length, ctx.measureText(max).width)
+  for(var i = 0; i < range*step; i++) {
+    ctx.save()
+    ctx.translate(i*step*scale, 0)
+    if(nRotate)
+      ctx.rotate(nRotate)
+    draw
+      .move({x:0, y:0})
+      .line({x:0, y:textHeight/2})
+      .textAlign('center')
+      .text(i*step, {x:0, y: textHeight * 1.5})
+      .stroke()
+    ctx.restore()
+  }
+}
+var T = 0
+function drawScale (ctx, scale, opts) {
+//  if(T++) return
+//  ctx.save()
+//  ctx.translate(Math.round(scale.side.min.x), Math.round(scale.side.min.y))
+//  ruler(ctx,
+//    v(scale.side.min).subtract(scale.side.max).length(), 
+//    0, scale.min, scale.max)
+//  ctx.restore()
+//
+//  ctx.save()
+//  ctx.translate(Math.round(scale.side.min.x), Math.round(scale.side.min.y))
+//  ctx.rotate(Math.PI*-0.5)
+//  ruler(ctx, v(scale.side.min).subtract(scale.side.max).length(), Math.PI, scale.min, scale.max)
+//  ctx.restore()
+
+//  return //
+  var draw = vec2Draw(ctx)
+  opts = opts || {}
+  var textHeight = parseInt(CTX.font)
+  var side = scale.side || opts.side
+  var log = opts.log
+
+  function toScale (value) {
+    return log ? Math.pow(Math.E, value) : value
+  }
+
+  function round (n) {
+    return parseFloat(toScale(n).toPrecision(opts.precision || 3))
+  }
+
+  var min = side.min, max = side.max, align = side.align
+  draw.strokeStyle('black').fillStyle('black').start().move(min).line(max)  
+
+  var textWidth = ctx.measureText(round(scale.max)).width
+  var textSize = align.x ? textHeight : textWidth
+
+  var room   = v(max).subtract(min).length()
+  var vec    = v(max).subtract(min).normalize()
+  var offset = v(align).multiply((align.x > 0 ? textHeight : textHeight*1.5))
+  var dash   = v(align).multiply(5)
+  var markV  = v()
+  var textV = v()
+
+  //how many marks can fit on the graph?
+  //if it's linear, that is simple
+  //if it's logarithmic, that is a little more complex.
+  //for now, we only support powers of 10 on the scale.
+  var xScale = room/(scale.max - scale.min)
+  //figure out step size for linear axis
+
+  steps(scale.min, scale.max, {room:room, width:textWidth}, function (value) {
+    markV.set(vec).multiply(value*xScale).add(min)
+    draw
+      .textAlign('center')
+      .text(
+        round(scale.min + value),
+        textV.set(markV).add(offset),
+        {rotate: !!align.x} //90 degrees
+      )
+      .move(markV)
+      .line(markV.add(dash))
+  })
+
+  //maybe this should be completely separate?
+
+  var label = (scale.title || '') + (scale.units ? ' (' + scale.units + ')' : '')
+  if(label) {
+    draw.text(
+      label,
+      v(min).add(max).divide(2).add(v(align).multiply((align.x > 0 ? textHeight*2 : textHeight*2.5))),
+      {rotate: !!align.x}
+    )
+  }
+
+  draw.stroke()
+}
+
+
+},{"./vec2-canvas":9,"vec2":6}],8:[function(require,module,exports){
 module.exports=[
   [
     {
@@ -1328,7 +1407,7 @@ module.exports=[
   ]
 ]
 
-},{}],8:[function(require,module,exports){
+},{}],9:[function(require,module,exports){
 function r (v) {
   return Math.round(v)
 }
@@ -1376,7 +1455,7 @@ module.exports =
   }
 
 
-},{}],9:[function(require,module,exports){
+},{}],10:[function(require,module,exports){
 // shim for using process in browser
 
 var process = module.exports = {};
