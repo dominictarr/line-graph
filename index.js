@@ -21,7 +21,7 @@ function nColours (N, sat, light) {
   var a = []
   for(var i = 0; i < N; i++) {
     //convert to rgb because node-canvas doesn't support hsl
-    a.push(Color('hsl('+ (i*(360/N)) + ', ' + sat + '%, ' + light +'%)').rgbString())
+    a.push(Color('hsl('+ ~~(i*(360/N)) + ', ' + sat + '%, ' + light +'%)').rgbString())
   }
   return a
 }
@@ -149,3 +149,6 @@ var graph = module.exports = function (ctx, table, opts) {
   ctx.fillStyle = 'black'
   ctx.fillText(opts.title || "Graph o'Data", width/2, textHeight * 2)
 }
+
+graph.colors =
+graph.colours = nColours
