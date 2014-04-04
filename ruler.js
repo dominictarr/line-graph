@@ -1,16 +1,24 @@
-module.exports = ruler
+exports = module.exports = ruler
+
+exports.steps = calcSteps
 
 //must have range, room, and width
 function calcSteps (min, max, room, width) {
   var range = max - min
   var i = 0, e
+
   while(true) {
     var e = Math.pow(10, i++)
     if(e > 10000000000)
       throw new Error('oops')
-    if(room   / (range / e) > width*3) return e
-    if(room*2 / (range / e) > width*3) return e*2
-    if(room*5 / (range / e) > width*3) return e*5
+
+    var re = range/e
+    var space = width*1.25
+
+    if(room     / (re) > space) return e
+    if(room*2   / (re) > space) return e*2
+    if(room*2.5 / (re) > space) return e*2.5
+    if(room*5   / (re) > space) return e*5
   }
 }
 
@@ -36,11 +44,14 @@ function ruler (ctx, length, nRotate, min, max) {
   var i = 0
   var range = max - min
   var scale = length/range
-  var step = calcSteps(min, max, length, ctx.measureText(max).width)
+
+  var step = calcSteps(min, max, length, ctx.measureText(max.toPrecision(4)).width)
+
   for(var i = 0; i < range/step; i++) {
     if(i > 1000) throw new Error('too many markings'+JSON.stringify([range, step, i]))
     ctx.save()
       ctx.translate(i*step*scale, 0)
+
       if(nRotate)
         ctx.rotate(nRotate)
       ctx.moveTo(0, 0)
