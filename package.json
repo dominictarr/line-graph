@@ -1,7 +1,7 @@
 {
   "name": "line-graph",
   "description": "very simple line-graph",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "homepage": "https://github.com/dominictarr/autograph",
   "repository": {
     "type": "git",
