@@ -135,17 +135,20 @@ var graph = module.exports = function (ctx, table, opts) {
     var yScale = (height - margin*2)/(scale.max - scale.min)
     var _x = 0, _y = 0
     ctx.beginPath()
-    ctx.strokeStyle = stat.color
+    ctx.fillStyle = ctx.strokeStyle = stat.color
     table.forEach(function (row, n) {
       var value = row[col]
       if(isNaN(value)) return
       var y = margin + (value - stat.min)*yScale
       var x = margin + (row[0] - xMin)*xScale
-      ;(n ? ctx.lineTo : ctx.moveTo).call(ctx, x, height - y)
+      if (opts.scatter) {
+        ctx.fillRect(x, height - y, 2, 2)
+      }
+      else
+        (n ? ctx.lineTo : ctx.moveTo).call(ctx, x, height - y)
     })
     ctx.stroke()
   })
-
   ctx.fillStyle = 'black'
   ctx.fillText(opts.title || "Graph o'Data", width/2, textHeight * 2)
 }
