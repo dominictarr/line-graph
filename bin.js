@@ -7,6 +7,11 @@ var canvas = new Canvas ()
 canvas.width = opts.width || 300
 canvas.height = opts.height || 150
 
+if (opts.size) {
+  canvas.width = opts.size.split('x').shift()
+  canvas.height = opts.size.split('x').pop()
+}
+
 var data = ''
 var Table = require('dat-table')
 process.stdin.on('data', function (d) {
