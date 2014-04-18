@@ -2,10 +2,10 @@
   "name": "line-graph",
   "description": "very simple line-graph",
   "version": "1.0.6",
-  "homepage": "https://github.com/dominictarr/autograph",
+  "homepage": "https://github.com/dominictarr/line-graph",
   "repository": {
     "type": "git",
-    "url": "git://github.com/dominictarr/autograph.git"
+    "url": "git://github.com/dominictarr/line-graph.git"
   },
   "dependencies": {
     "dat-table": "~0.2",
