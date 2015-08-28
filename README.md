@@ -4,12 +4,22 @@ I wanted a graph that I could install with npm and pipe a csv to, so I wrote one
 
 Works both in js in the browser, and via command line.
 
-# example, terminal
+## example, terminal
+
+with [electro](https://github.com/dominictarr/electro), use this as a cli too.
+
+`npm install -g electron-prebuilt electro line-graph`
+
+pipe a csv file into line-graph:
 
 ```
-npm install line-graph -g
+line-graph < table.csv
+```
+an electron window will open and display the graph!
 
-line-graph < data.csv > graph.png --title "Graph o'Data"
+or, pipe the output to a png file:
+```
+line-graph < table.csv > table.png
 ```
 
 # example, browser
@@ -30,24 +40,6 @@ If your data has headers and units how [dat-table](https://github.com/dominictar
 likes it, you should get a pretty good graph the first time.
 
 <img src=https://raw.github.com/dominictarr/line-graph/master/test/fib.png>
-
-## example, terminal
-
-with [electro](https://github.com/dominictarr/electro), use this as a cli too.
-
-`npm install -g electron-prebuilt electro line-graph`
-
-pipe a csv file into line-graph:
-
-```
-line-graph < table.csv
-```
-an electron window will open and display the graph!
-
-or, pipe the output to a png file:
-```
-line-graph < table.csv > table.png
-```
 
 ## License
 
