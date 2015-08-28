@@ -31,6 +31,24 @@ likes it, you should get a pretty good graph the first time.
 
 <img src=https://raw.github.com/dominictarr/line-graph/master/test/fib.png>
 
+## example, terminal
+
+with [electro](https://github.com/dominictarr/electro), use this as a cli too.
+
+`npm install -g electron-prebuilt electro line-graph`
+
+pipe a csv file into line-graph:
+
+```
+line-graph < table.csv
+```
+an electron window will open and display the graph!
+
+or, pipe the output to a png file:
+```
+line-graph < table.csv > table.png
+```
+
 ## License
 
 MIT

@@ -1,15 +1,18 @@
-#! /usr/bin/env node
+#! /usr/bin/env electro
 var opts = require('optimist').argv
-var Canvas = require('canvas')
 var graph = require('./')
 
-var canvas = new Canvas ()
-canvas.width = opts.width || 300
-canvas.height = opts.height || 150
+var canvas = document.createElement('canvas')
+
+document.body.appendChild(canvas)
 
 if (opts.size) {
   canvas.width = opts.size.split('x').shift()
   canvas.height = opts.size.split('x').pop()
+}
+else {
+  canvas.width = opts.width || 300
+  canvas.height = opts.height || 150
 }
 
 var data = ''
@@ -25,5 +28,11 @@ process.stdin.on('data', function (d) {
     table = Table.createTable(data)
 
   graph(canvas.getContext('2d'), table, opts)
-  canvas.pngStream().pipe(process.stdout)
+
+  if(!process.stdout.isTTY) {
+    var out = canvas.toDataURL('image/png')
+    var i = out.indexOf(',')
+    process.stdout.write(new Buffer(out.substring(i), 'base64'))
+    window.close()
+  }
 })
