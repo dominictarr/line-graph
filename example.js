@@ -1,4 +1,5 @@
-var Canvas = require('canvas-browserify/browser')
+var canvas = document.createElement('canvas')
+
 
 var graph = require('./')
 
@@ -6,7 +7,6 @@ if(process.title !== 'node') {
   var createTable = require('dat-table').createTable
   window.LineGraph = function (data, opts) {
     document.body.innerHTML = ''
-    var canvas = Canvas()
     canvas.width = opts.width || 1000
     canvas.height = opts.height || 600
 
@@ -23,11 +23,12 @@ if(process.title !== 'node') {
 //  document.body.appendChild(canvas)
 //
 
-  var canvas = Canvas()
   canvas.width = 1000
   canvas.height = 600
   var ctx = canvas.getContext('2d')
   graph(ctx, createTable(require('./test/merkle.json')), {title: 'Time to build a merkle tree'})
   document.body.appendChild(canvas)
 }
+
+
 
